@@ -30,7 +30,7 @@ def main():
             supabase.table("time_bucket_metrics")
             .select("id, volume_raw")
             .eq("source_id", source["id"])
-            .eq("bucket_start", bucket_start.isoformat())
+            .eq("bucket_start", bucket_start)
             .execute()
             .data
         )
