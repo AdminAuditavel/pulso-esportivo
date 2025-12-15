@@ -79,7 +79,7 @@ def main():
         })
 
     response = (
-        supabase.table("daily_aggregations")
+        supabase.table("daily_aggregations_v2")
         .insert(inserts)
         .execute()
     )
