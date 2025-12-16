@@ -14,9 +14,9 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 # Função para calcular o IAP e gerar o ranking
 def get_ranking():
-    # Buscar os dados do ranking (essa parte depende de como você está armazenando os dados)
+    # Buscar os dados do ranking na tabela 'daily_ranking' (ajustado)
     ranking_data = (
-        supabase.table("ranking")  # Ajuste com o nome da sua tabela
+        supabase.table("daily_ranking")  # Alterado para a tabela correta
         .select("club_id, rank_position, score, volume_total")
         .execute()
         .data
