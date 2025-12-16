@@ -63,7 +63,7 @@ async def get_sources():
     except Exception as e:
         return {"error": str(e)}
 
-# Endpoint para pegar dados da tabela daily_aggregations_v2 (corrigido)
+# Endpoint para pegar dados da tabela daily_aggregations_v2
 @app.get("/daily_aggregations_v2")
 async def get_daily_aggregations_v2():
     try:
