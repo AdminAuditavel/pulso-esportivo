@@ -12,6 +12,11 @@ app = FastAPI()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+# Rota de teste para a raiz
+@app.get("/")
+def read_root():
+    return {"message": "API is running! Go to /ranking for the data."}
+
 # Função para calcular o IAP e gerar o ranking
 def get_ranking():
     # Buscar os dados do ranking na tabela 'daily_ranking' (ajustado)
@@ -27,9 +32,3 @@ def get_ranking():
 def read_ranking():
     ranking = get_ranking()
     return {"ranking": ranking}
-
-@app.get("/")
-def read_root():
-    return {"message": "API is running! Go to /ranking for the data."}
-
-
