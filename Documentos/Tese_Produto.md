@@ -145,3 +145,41 @@ Ela depende do **método**.
 ## 10. Frase síntese (âncora conceitual)
 
 > **Pulso Esportivo é um termômetro público da atenção esportiva, construído a partir de dados abertos, métricas agregadas e respeito absoluto à privacidade.**
+
+
+## 11. Escopo temático e evolução além do esporte
+
+Embora o Pulso Esportivo tenha nascido no contexto esportivo, sua arquitetura, metodologia e princípios **não são específicos de um único domínio**.
+
+O esporte é o **primeiro recorte editorial** do produto, escolhido por sua alta densidade de debate público e facilidade de validação inicial.
+
+A mesma estrutura permite, de forma natural e incremental, acompanhar outros grandes campos de atenção pública, como:
+
+- política
+- ciência
+- tecnologia
+- economia
+- meio ambiente
+- cultura
+- temas sociais
+
+Em todos os casos, o princípio permanece o mesmo:
+
+- uso exclusivo de dados públicos
+- análise apenas em nível agregado
+- ausência total de identificação individual
+- foco em atenção coletiva, não em opinião isolada
+
+Essa evolução não altera o núcleo do produto, apenas **expande o conjunto de entidades analisadas**.
+
+---
+
+## 12. Do esporte à atenção pública em geral
+
+O Pulso Esportivo pode evoluir, no futuro, para um **sistema mais amplo de inteligência de atenção pública**, no qual o esporte é apenas um dos eixos observados.
+
+Essa evolução é editorial e estratégica — não técnica.
+
+O método permanece constante:
+> medir onde a atenção pública se concentra, como ela se distribui e como evolui ao longo do tempo.
+
