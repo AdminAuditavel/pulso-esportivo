@@ -29,69 +29,79 @@ export async function GET(req) {
       Accept: 'application/json',
     };
 
-    // 1) Resolver clubName -> club_id consultando tabela clubs
-    async function resolveClubIdByName(name) {
-      const nameCols = ['name', 'club_name']; // tentativas comuns
-      let lastText = '';
+    const club = clubName.trim();
 
-      for (const col of nameCols) {
-        const p = new URLSearchParams();
-        p.set('select', 'id,' + col);
-        p.set(col, `eq.${name}`);
+    // 1) Resolver clubName -> club_id via tabela clubs (coluna "name")
+    async function resolveClubIdFromClubsByName(name) {
+      const p = new URLSearchParams();
+      p.set('select', 'id,name');
+      p.set('name', `eq.${name}`);
 
-        const target = `${base}/clubs?${p.toString()}`;
-        const res = await fetch(target, { headers });
-        const text = await res.text();
+      const target = `${base}/clubs?${p.toString()}`;
+      const res = await fetch(target, { headers });
+      const text = await res.text();
 
-        if (res.ok) {
-          let rows = [];
-          try {
-            rows = JSON.parse(text);
-          } catch {
-            rows = [];
-          }
-          if (Array.isArray(rows) && rows.length > 0 && rows[0]?.id) {
-            return { clubId: rows[0].id, matchedBy: col };
-          }
-        } else {
-          lastText = text;
-        }
+      if (!res.ok) {
+        return { clubId: null, matchedBy: null, lastText: text };
       }
 
-      // fallback: tentativa "ilike" se existir (útil se houver variação de maiúsculas)
-      for (const col of ['name', 'club_name']) {
-        const p = new URLSearchParams();
-        p.set('select', 'id,' + col);
-        p.set(col, `ilike.${name}`); // pode falhar se PostgREST não aceitar, mas tentamos
-
-        const target = `${base}/clubs?${p.toString()}`;
-        const res = await fetch(target, { headers });
-        const text = await res.text();
-
-        if (res.ok) {
-          let rows = [];
-          try {
-            rows = JSON.parse(text);
-          } catch {
-            rows = [];
-          }
-          if (Array.isArray(rows) && rows.length > 0 && rows[0]?.id) {
-            return { clubId: rows[0].id, matchedBy: `${col} ilike` };
-          }
-        } else {
-          lastText = text;
-        }
+      let rows = [];
+      try {
+        rows = JSON.parse(text);
+      } catch {
+        rows = [];
       }
 
-      return { clubId: null, matchedBy: null, lastText };
+      if (Array.isArray(rows) && rows.length > 0 && rows[0]?.id) {
+        return { clubId: rows[0].id, matchedBy: 'clubs.name', lastText: '' };
+      }
+
+      return { clubId: null, matchedBy: null, lastText: '' };
     }
 
-    const resolved = await resolveClubIdByName(clubName.trim());
+    // 2) Fallback: resolver clubName -> club_id via view daily_ranking_with_names (coluna club_name)
+    async function resolveClubIdFromRankingView(name) {
+      const p = new URLSearchParams();
+      p.set('select', 'club_id,club_name');
+      p.set('club_name', `eq.${name}`);
+      p.set('limit', '1');
+
+      const target = `${base}/daily_ranking_with_names?${p.toString()}`;
+      const res = await fetch(target, { headers });
+      const text = await res.text();
+
+      if (!res.ok) {
+        return { clubId: null, matchedBy: null, lastText: text };
+      }
+
+      let rows = [];
+      try {
+        rows = JSON.parse(text);
+      } catch {
+        rows = [];
+      }
+
+      if (Array.isArray(rows) && rows.length > 0 && rows[0]?.club_id) {
+        return { clubId: rows[0].club_id, matchedBy: 'daily_ranking_with_names.club_name', lastText: '' };
+      }
+
+      return { clubId: null, matchedBy: null, lastText: '' };
+    }
+
+    // tenta clubs.name
+    let resolved = await resolveClubIdFromClubsByName(club);
+
+    // se não achou, tenta view com nomes
+    if (!resolved.clubId) {
+      const fallback = await resolveClubIdFromRankingView(club);
+      if (fallback.clubId) resolved = fallback;
+    }
+
     if (!resolved.clubId) {
       return new Response(
         JSON.stringify({
-          error: 'Clube não encontrado na tabela clubs pelo nome informado',
-          club: clubName,
+          error: 'Clube não encontrado nem em clubs.name nem na view daily_ranking_with_names.club_name',
+          club,
           details: resolved.lastText || '',
         }),
         { status: 404, headers: { 'Content-Type': 'application/json' } }
@@ -100,8 +110,9 @@ export async function GET(req) {
 
     const clubId = resolved.clubId;
 
-    // 2) Buscar série temporal filtrando por club_id nas views/tabelas candidatas
-    const resources = ['daily_ranking_with_names', 'daily_ranking', 'daily_rankings'];
+    // 3) Buscar série temporal filtrando por club_id
+    //    (as colunas de data/score podem variar; mantemos tentativa heurística)
+    const resources = ['daily_ranking', 'daily_rankings', 'daily_ranking_with_names'];
     const dateCols = ['bucket_date', 'day', 'date', 'ranking_date', 'metric_date'];
     const scoreCols = ['score', 'iap'];
 
@@ -135,7 +146,7 @@ export async function GET(req) {
                 date: r?.[dateCol],
                 value: r?.[scoreCol],
                 club_id: r?.club_id ?? clubId,
-                club_name: clubName,
+                club_name: club,
               }))
               .filter((r) => r.date != null && r.value != null);
 
@@ -154,7 +165,7 @@ export async function GET(req) {
       return new Response(
         JSON.stringify({
           error: 'Não foi possível montar a série temporal (view/colunas incompatíveis)',
-          club: clubName,
+          club,
           club_id: clubId,
           details: lastErrorText,
         }),
