@@ -12,10 +12,10 @@ export async function GET(req) {
     }
 
     const url = new URL(req.url);
-    const clubName = url.searchParams.get('club');
+    const clubName = (url.searchParams.get('club') || '').trim();
     const limitDays = Number(url.searchParams.get('limit_days') || '90');
 
-    if (!clubName || clubName.trim() === '') {
+    if (!clubName) {
       return new Response(JSON.stringify({ error: 'Parâmetro club é obrigatório' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -29,227 +29,117 @@ export async function GET(req) {
       Accept: 'application/json',
     };
 
-    const club = clubName.trim();
+    // 1) Resolver clubName -> club_id
+    // Tentamos name_short primeiro (porque seu ranking mostra "Vasco", "SPFC", "Remo", etc.)
+    async function resolveClubId(name) {
+      const attempts = [
+        { col: 'name_short', value: name },
+        { col: 'name_official', value: name },
+      ];
 
-    // -----------------------------
-    // 1) Resolve club -> club_id
-    // -----------------------------
-    async function resolveClubIdFromClubs(name) {
-      const nameCols = ['name_official', 'name']; // seu cenário: name_official existe
-      let lastText = '';
+      // também tenta versões "ilike" para caso de variação de caixa/acentos (quando funcionar)
+      const attemptsIlike = [
+        { col: 'name_short', value: `ilike.${name}` },
+        { col: 'name_official', value: `ilike.${name}` },
+      ];
 
-      for (const col of nameCols) {
+      // eq
+      for (const a of attempts) {
         const p = new URLSearchParams();
-        p.set('select', `id,${col}`);
-        p.set(col, `eq.${name}`);
+        p.set('select', 'id,name_official,name_short');
+        p.set(a.col, `eq.${a.value}`);
         p.set('limit', '1');
 
-        const target = `${base}/clubs?${p.toString()}`;
-        const res = await fetch(target, { headers });
+        const res = await fetch(`${base}/clubs?${p.toString()}`, { headers });
         const text = await res.text();
+        if (!res.ok) continue;
 
-        if (res.ok) {
-          let rows = [];
-          try {
-            rows = JSON.parse(text);
-          } catch {
-            rows = [];
-          }
-          if (Array.isArray(rows) && rows.length > 0 && rows[0]?.id) {
-            return { clubId: rows[0].id, matchedBy: `clubs.${col}`, lastText: '' };
-          }
-        } else {
-          lastText = text;
+        let rows = [];
+        try {
+          rows = JSON.parse(text);
+        } catch {
+          rows = [];
+        }
+        if (Array.isArray(rows) && rows[0]?.id) {
+          return { id: rows[0].id, matchedBy: `clubs.${a.col}=eq`, club: rows[0] };
         }
       }
 
-      return { clubId: null, matchedBy: null, lastText };
+      // ilike (se PostgREST aceitar; se não aceitar, simplesmente não vai retornar ok/linha)
+      for (const a of attemptsIlike) {
+        const p = new URLSearchParams();
+        p.set('select', 'id,name_official,name_short');
+        p.set(a.col, a.value);
+        p.set('limit', '1');
+
+        const res = await fetch(`${base}/clubs?${p.toString()}`, { headers });
+        const text = await res.text();
+        if (!res.ok) continue;
+
+        let rows = [];
+        try {
+          rows = JSON.parse(text);
+        } catch {
+          rows = [];
+        }
+        if (Array.isArray(rows) && rows[0]?.id) {
+          return { id: rows[0].id, matchedBy: `clubs.${a.col}=ilike`, club: rows[0] };
+        }
+      }
+
+      return null;
     }
 
-    async function resolveClubIdFromRankingWithNames(name) {
-      // fallback via view que tem club_name
+    const resolved = await resolveClubId(clubName);
+
+    if (!resolved?.id) {
+      // fallback: tentar via view com nomes (caso o nome clicado seja diferente do cadastro em clubs)
       const p = new URLSearchParams();
       p.set('select', 'club_id,club_name');
-      p.set('club_name', `eq.${name}`);
+      p.set('club_name', `eq.${clubName}`);
       p.set('limit', '1');
 
-      const target = `${base}/daily_ranking_with_names?${p.toString()}`;
-      const res = await fetch(target, { headers });
+      const res = await fetch(`${base}/daily_ranking_with_names?${p.toString()}`, { headers });
       const text = await res.text();
 
-      if (!res.ok) return { clubId: null, matchedBy: null, lastText: text };
-
-      let rows = [];
-      try {
-        rows = JSON.parse(text);
-      } catch {
-        rows = [];
+      if (res.ok) {
+        let rows = [];
+        try {
+          rows = JSON.parse(text);
+        } catch {
+          rows = [];
+        }
+        if (Array.isArray(rows) && rows[0]?.club_id) {
+          // segue com esse club_id mesmo sem bater em clubs
+          return await fetchSeriesAndReturn({
+            clubId: rows[0].club_id,
+            clubName,
+            matchedBy: 'daily_ranking_with_names.club_name',
+            base,
+            headers,
+            limitDays,
+          });
+        }
       }
 
-      if (Array.isArray(rows) && rows.length > 0 && rows[0]?.club_id) {
-        return {
-          clubId: rows[0].club_id,
-          matchedBy: 'daily_ranking_with_names.club_name',
-          lastText: '',
-        };
-      }
-
-      return { clubId: null, matchedBy: null, lastText: '' };
-    }
-
-    let resolved = await resolveClubIdFromClubs(club);
-    if (!resolved.clubId) {
-      const fb = await resolveClubIdFromRankingWithNames(club);
-      if (fb.clubId) resolved = fb;
-    }
-
-    if (!resolved.clubId) {
       return new Response(
         JSON.stringify({
-          error: 'Clube não encontrado (clubs.name_official/name e fallback na daily_ranking_with_names.club_name falharam)',
-          club,
-          details: resolved.lastText || '',
+          error: 'Clube não encontrado em clubs (name_short/name_official) e nem na daily_ranking_with_names',
+          club: clubName,
         }),
         { status: 404, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    const clubId = resolved.clubId;
-
-    // -----------------------------
-    // 2) Descobrir colunas reais via probe
-    // -----------------------------
-    const resources = ['daily_ranking_with_names', 'daily_ranking', 'daily_rankings'];
-
-    const dateCandidates = ['bucket_date', 'day', 'date', 'ranking_date', 'created_at', 'updated_at'];
-    const scoreCandidates = ['score', 'iap'];
-
-    async function probeResource(resource) {
-      // Probe: select=* limit=1 com filtro por club_id
-      const p = new URLSearchParams();
-      p.set('select', '*');
-      p.set('club_id', `eq.${clubId}`);
-      p.set('limit', '1');
-
-      const target = `${base}/${resource}?${p.toString()}`;
-      const res = await fetch(target, { headers });
-      const text = await res.text();
-
-      if (!res.ok) return { ok: false, text, sample: null, keys: [] };
-
-      let rows = [];
-      try {
-        rows = JSON.parse(text);
-      } catch {
-        rows = [];
-      }
-
-      const sample = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
-      const keys = sample && typeof sample === 'object' ? Object.keys(sample) : [];
-      return { ok: true, text, sample, keys };
-    }
-
-    function pickFirstExisting(candidates, keys) {
-      for (const c of candidates) if (keys.includes(c)) return c;
-      return null;
-    }
-
-    let chosen = null;
-    let lastProbeError = '';
-
-    for (const resource of resources) {
-      const probed = await probeResource(resource);
-      if (!probed.ok) {
-        lastProbeError = probed.text;
-        continue;
-      }
-      if (!probed.sample) {
-        // recurso existe, mas não tem linha para esse club_id
-        continue;
-      }
-
-      const dateCol = pickFirstExisting(dateCandidates, probed.keys);
-      const scoreCol = pickFirstExisting(scoreCandidates, probed.keys);
-
-      if (dateCol && scoreCol) {
-        chosen = { resource, dateCol, scoreCol, keys: probed.keys };
-        break;
-      }
-
-      // Se achou score mas não achou date, ainda assim guardamos para debug
-      lastProbeError = JSON.stringify({
-        resource,
-        missing: { dateCol: !dateCol, scoreCol: !scoreCol },
-        keys: probed.keys,
-      });
-    }
-
-    if (!chosen) {
-      return new Response(
-        JSON.stringify({
-          error: 'Não foi possível montar a série temporal (não encontrei colunas de data/score compatíveis em nenhum recurso)',
-          club,
-          club_id: clubId,
-          details: lastProbeError,
-        }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // -----------------------------
-    // 3) Buscar série com colunas certas
-    // -----------------------------
-    const p = new URLSearchParams();
-    p.set('select', `${chosen.dateCol},${chosen.scoreCol},club_id`);
-    p.set('club_id', `eq.${clubId}`);
-    p.set('order', `${chosen.dateCol}.asc`);
-    p.set('limit', String(limitDays));
-
-    const target = `${base}/${chosen.resource}?${p.toString()}`;
-    const res = await fetch(target, { headers });
-    const text = await res.text();
-
-    if (!res.ok) {
-      return new Response(
-        JSON.stringify({
-          error: 'Falha ao buscar série após identificar colunas',
-          club,
-          club_id: clubId,
-          resource: chosen.resource,
-          dateCol: chosen.dateCol,
-          scoreCol: chosen.scoreCol,
-          details: text,
-        }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    let rows = [];
-    try {
-      rows = JSON.parse(text);
-    } catch {
-      rows = [];
-    }
-
-    const series = (Array.isArray(rows) ? rows : [])
-      .map((r) => ({
-        date: r?.[chosen.dateCol],
-        value: r?.[chosen.scoreCol],
-        club_id: r?.club_id ?? clubId,
-        club_name: club,
-      }))
-      .filter((r) => r.date != null && r.value != null);
-
-    return new Response(JSON.stringify(series), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Club-Id': clubId,
-        'X-Club-Matched-By': resolved.matchedBy || '',
-        'X-Source-Resource': chosen.resource,
-        'X-Date-Col': chosen.dateCol,
-        'X-Score-Col': chosen.scoreCol,
-      },
+    return await fetchSeriesAndReturn({
+      clubId: resolved.id,
+      clubName,
+      matchedBy: resolved.matchedBy,
+      base,
+      headers,
+      limitDays,
+      clubOfficial: resolved.club?.name_official,
+      clubShort: resolved.club?.name_short,
     });
   } catch (err) {
     console.error('Erro na rota /api/club_series:', err);
@@ -258,4 +148,55 @@ export async function GET(req) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+}
+
+async function fetchSeriesAndReturn({ clubId, clubName, matchedBy, base, headers, limitDays, clubOfficial, clubShort }) {
+  const p = new URLSearchParams();
+  p.set('select', 'aggregation_date,score,volume_total,sentiment_score,rank_position,club_id');
+  p.set('club_id', `eq.${clubId}`);
+  p.set('order', 'aggregation_date.asc');
+  p.set('limit', String(limitDays));
+
+  const res = await fetch(`${base}/daily_ranking?${p.toString()}`, { headers });
+  const text = await res.text();
+
+  if (!res.ok) {
+    return new Response(
+      JSON.stringify({
+        error: 'Falha ao buscar série em daily_ranking',
+        club: clubName,
+        club_id: clubId,
+        details: text,
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  let rows = [];
+  try {
+    rows = JSON.parse(text);
+  } catch {
+    rows = [];
+  }
+
+  const series = (Array.isArray(rows) ? rows : []).map((r) => ({
+    date: r.aggregation_date, // coluna correta
+    value: r.score,           // coluna correta
+    volume_total: r.volume_total,
+    sentiment_score: r.sentiment_score,
+    rank_position: r.rank_position,
+    club_id: r.club_id ?? clubId,
+    club_name: clubName,
+    club_name_official: clubOfficial || null,
+    club_name_short: clubShort || null,
+  }));
+
+  return new Response(JSON.stringify(series), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Club-Id': clubId,
+      'X-Club-Matched-By': matchedBy,
+    },
+  });
 }
