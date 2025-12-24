@@ -67,11 +67,14 @@ export async function GET(req) {
       });
     }
 
-    // Busca nomes dos clubes pela lista de ids
+    // Busca nomes dos clubes pela lista de ids — IMPORTANT: strings (UUIDs) devem estar entre aspas no filtro in.
     const clubsUrl = new URL(`${base}/clubs`);
     const clubParams = new URLSearchParams();
     clubParams.set('select', 'id,name');
-    clubParams.set('id', `in.(${clubIds.join(',')})`);
+
+    // coloca cada id entre aspas para o operador in do PostgREST, as aspas serão url-encoded automaticamente
+    const quoted = clubIds.map((id) => `"${id}"`).join(',');
+    clubParams.set('id', `in.(${quoted})`);
     clubsUrl.search = clubParams.toString();
 
     const clubsRes = await fetch(clubsUrl.toString(), {
