@@ -19,7 +19,7 @@ Implementar pipeline: coleta → agregação → normalização → IAP → pers
 # Visão do Produto – Plataforma Pública de Tendências Esportivas
 
 ## 1. Visão Geral
-A plataforma será um **painel público de inteligência esportiva**, criado para mostrar, de forma clara e acessível, **quais assuntos do esporte estão gerando mais atenção e discussão pública na internet**, usando **exclusivamente dados públicos e sem restrições**.
+A plataforma será um **painel público de inteligência (esportiva, política, cultural, tecnológica etc)**, criado para mostrar, de forma clara e acessível, **quais assuntos estão gerando mais atenção e discussão pública na internet**, usando **exclusivamente dados públicos e sem restrições**.
 
 O produto transforma grandes volumes de conversas abertas em **rankings, gráficos e indicadores**, sem expor comentários individuais ou dados pessoais.
 
