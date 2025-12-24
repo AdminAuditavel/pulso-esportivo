@@ -44,6 +44,16 @@ function toNumber(x) {
   return Number.isFinite(n) ? n : null;
 }
 
+function isLabelA(label) {
+  return /\(A\)\s*$/.test(String(label));
+}
+function isLabelB(label) {
+  return /\(B\)\s*$/.test(String(label));
+}
+function stripAB(label) {
+  return String(label).replace(/\s*\((A|B)\)\s*$/, '');
+}
+
 function normalizeSeries(series) {
   const arr = (Array.isArray(series) ? series : [])
     .map((r) => ({
@@ -56,21 +66,33 @@ function normalizeSeries(series) {
   return arr;
 }
 
-function isLabelA(label) {
-  return /\(A\)\s*$/.test(String(label));
+function parseYYYYMMDD(s) {
+  if (!s || typeof s !== 'string') return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!y || !mo || !d) return null;
+  return new Date(Date.UTC(y, mo - 1, d));
 }
-function isLabelB(label) {
-  return /\(B\)\s*$/.test(String(label));
+function formatYYYYMMDD(dateUtc) {
+  if (!(dateUtc instanceof Date)) return '';
+  const y = dateUtc.getUTCFullYear();
+  const m = String(dateUtc.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(dateUtc.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
-function stripAB(label) {
-  return String(label).replace(/\s*\((A|B)\)\s*$/, '');
+function prevDay(yyyyMMdd) {
+  const dt = parseYYYYMMDD(yyyyMMdd);
+  if (!dt) return '';
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return formatYYYYMMDD(dt);
 }
-
-// Paleta manual (até 5)
-const MANUAL_PALETTE = ['#2563EB', '#16A34A', '#7C3AED', '#DC2626', '#0EA5E9'];
-// Cores fixas A/B
-const COLOR_A = '#2563EB'; // azul
-const COLOR_B = '#F97316'; // laranja
+function getAggregationDateFromItem(item) {
+  const d = item?.aggregation_date ?? item?.metric_date ?? item?.date;
+  return d ? String(d).slice(0, 10) : '';
+}
 
 function buildAbSummary(aItems, bItems) {
   const aNames = aItems.map(getClubName).filter((n) => n && n !== '—');
@@ -109,7 +131,14 @@ function buildAbSummary(aItems, bItems) {
     if (as === null || as === undefined || bs === null || bs === undefined) continue;
 
     const delta = bs - as;
-    deltas.push({ name, delta, aScore: as, bScore: bs, aRank: a?.rank ?? null, bRank: b?.rank ?? null });
+    deltas.push({
+      name,
+      delta,
+      aScore: as,
+      bScore: bs,
+      aRank: a?.rank ?? null,
+      bRank: b?.rank ?? null,
+    });
 
     if (!bestUp || delta > bestUp.delta) bestUp = { name, delta };
     if (!bestDown || delta < bestDown.delta) bestDown = { name, delta };
@@ -124,37 +153,11 @@ function buildAbSummary(aItems, bItems) {
   };
 }
 
-function parseYYYYMMDD(s) {
-  if (!s || typeof s !== 'string') return null;
-  // usa UTC para não “escorregar” por timezone
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  if (!y || !mo || !d) return null;
-  return new Date(Date.UTC(y, mo - 1, d));
-}
-
-function formatYYYYMMDD(dateUtc) {
-  if (!(dateUtc instanceof Date)) return '';
-  const y = dateUtc.getUTCFullYear();
-  const m = String(dateUtc.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(dateUtc.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function prevDay(yyyyMMdd) {
-  const dt = parseYYYYMMDD(yyyyMMdd);
-  if (!dt) return '';
-  dt.setUTCDate(dt.getUTCDate() - 1);
-  return formatYYYYMMDD(dt);
-}
-
-function getAggregationDateFromItem(item) {
-  const d = item?.aggregation_date ?? item?.metric_date ?? item?.date;
-  return d ? String(d).slice(0, 10) : '';
-}
+// Paleta manual (até 5)
+const MANUAL_PALETTE = ['#2563EB', '#16A34A', '#7C3AED', '#DC2626', '#0EA5E9'];
+// Cores fixas para A/B
+const COLOR_A = '#2563EB'; // azul
+const COLOR_B = '#F97316'; // laranja
 
 /* ============================
    Component
@@ -190,6 +193,13 @@ export default function Ranking() {
     fetchData('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Data efetiva (quando selectedDate vazio, inferimos do payload)
+  const effectiveDate = useMemo(() => {
+    if (selectedDate) return selectedDate;
+    if (!Array.isArray(data) || data.length === 0) return '';
+    return getAggregationDateFromItem(data[0]) || '';
+  }, [selectedDate, data]);
 
   const clubOptions = useMemo(() => {
     if (!Array.isArray(data)) return [];
@@ -242,19 +252,10 @@ export default function Ranking() {
   const [prevLoading, setPrevLoading] = useState(false);
   const [prevError, setPrevError] = useState(null);
 
-  // data atual efetiva (quando selectedDate vazio, inferimos do payload)
-  const effectiveDate = useMemo(() => {
-    if (selectedDate) return selectedDate;
-    if (!Array.isArray(data) || data.length === 0) return '';
-    // assume que todos itens do ranking são do mesmo dia (aggregation_date)
-    return getAggregationDateFromItem(data[0]) || '';
-  }, [selectedDate, data]);
-
   useEffect(() => {
     async function fetchPrevRanking() {
       setPrevError(null);
 
-      // Sem data efetiva, não dá para calcular anterior
       if (!effectiveDate) {
         setPrevDateUsed('');
         setPrevRankMap(new Map());
@@ -274,7 +275,6 @@ export default function Ranking() {
       try {
         const res = await fetch(`/api/daily_ranking?date=${encodeURIComponent(p)}`);
         if (!res.ok) {
-          // se não tiver dados no dia anterior, apenas zera (não “quebra” a página)
           setPrevRankMap(new Map());
           return;
         }
@@ -305,26 +305,48 @@ export default function Ranking() {
   }, [effectiveDate]);
 
   function renderTrend(item, idx) {
-    // rank atual
-    const currRank =
-      toNumber(item?.rank_position) !== null ? toNumber(item?.rank_position) : idx + 1;
-
+    const currRank = toNumber(item?.rank_position) !== null ? toNumber(item?.rank_position) : idx + 1;
     const name = getClubName(item);
     const prevRank = prevRankMap.get(name);
 
     if (!prevDateUsed || !prevRank || !currRank) return <span style={{ opacity: 0.7 }}>—</span>;
 
-    // delta positivo = subiu
     const delta = prevRank - currRank;
 
-    if (delta > 0) {
-      return <span style={{ color: '#16A34A', fontWeight: 700 }}>↑ +{delta}</span>;
-    }
-    if (delta < 0) {
-      return <span style={{ color: '#DC2626', fontWeight: 700 }}>↓ {delta}</span>;
-    }
+    if (delta > 0) return <span style={{ color: '#16A34A', fontWeight: 700 }}>↑ +{delta}</span>;
+    if (delta < 0) return <span style={{ color: '#DC2626', fontWeight: 700 }}>↓ {delta}</span>;
     return <span style={{ opacity: 0.85, fontWeight: 700 }}>→ 0</span>;
   }
+
+  /* ============================
+     Top Movers (subiram / caíram)
+  ============================ */
+  const movers = useMemo(() => {
+    if (!Array.isArray(tableItems) || tableItems.length === 0) return null;
+    if (!prevDateUsed || !(prevRankMap instanceof Map) || prevRankMap.size === 0) return null;
+
+    const all = [];
+
+    for (let i = 0; i < tableItems.length; i += 1) {
+      const it = tableItems[i];
+      const name = getClubName(it);
+      if (!name || name === '—') continue;
+
+      const currRank = toNumber(it?.rank_position) !== null ? toNumber(it?.rank_position) : i + 1;
+      const prevRank = prevRankMap.get(name);
+      if (!prevRank || !currRank) continue;
+
+      const delta = prevRank - currRank; // >0 subiu; <0 caiu
+      if (delta === 0) continue;
+
+      all.push({ name, currRank, prevRank, delta });
+    }
+
+    const up = [...all].filter((x) => x.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 5);
+    const down = [...all].filter((x) => x.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 5);
+
+    return { up, down };
+  }, [tableItems, prevDateUsed, prevRankMap]);
 
   /* ============================
      Comparação multi-clubes (linha)
@@ -487,7 +509,7 @@ export default function Ranking() {
   }, [clubs]);
 
   /* ============================
-     Render - estados de erro
+     Render
   ============================ */
   if (loading) return <div>Carregando ranking…</div>;
 
@@ -565,6 +587,64 @@ export default function Ranking() {
           Limpar clube
         </button>
       </div>
+
+      {/* TOP MOVERS */}
+      <section style={{ border: '1px solid #eee', borderRadius: 12, padding: 12, display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Top Movers (vs {prevDateUsed || 'dia anterior'})</div>
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            Base: ranking exibido ({effectiveDate || '—'}) comparado ao dia anterior disponível
+          </div>
+        </div>
+
+        {!movers ? (
+          <div style={{ fontSize: 12, opacity: 0.8 }}>Sem comparação disponível (não há dados do dia anterior).</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+            <div style={{ border: '1px solid #f0f0f0', borderRadius: 10, padding: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#16A34A' }}>Mais subiram</div>
+              {movers.up.length === 0 ? (
+                <div style={{ fontSize: 12, opacity: 0.8 }}>—</div>
+              ) : (
+                <ol style={{ margin: '8px 0 0 18px', padding: 0 }}>
+                  {movers.up.map((m) => (
+                    <li key={m.name} style={{ marginBottom: 6, fontSize: 13 }}>
+                      <Link href={`/club/${encodeURIComponent(m.name)}`} style={{ textDecoration: 'underline' }}>
+                        {m.name}
+                      </Link>{' '}
+                      <span style={{ fontWeight: 700, color: '#16A34A' }}>↑ +{m.delta}</span>{' '}
+                      <span style={{ opacity: 0.75 }}>
+                        ({m.prevRank} → {m.currRank})
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+
+            <div style={{ border: '1px solid #f0f0f0', borderRadius: 10, padding: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#DC2626' }}>Mais caíram</div>
+              {movers.down.length === 0 ? (
+                <div style={{ fontSize: 12, opacity: 0.8 }}>—</div>
+              ) : (
+                <ol style={{ margin: '8px 0 0 18px', padding: 0 }}>
+                  {movers.down.map((m) => (
+                    <li key={m.name} style={{ marginBottom: 6, fontSize: 13 }}>
+                      <Link href={`/club/${encodeURIComponent(m.name)}`} style={{ textDecoration: 'underline' }}>
+                        {m.name}
+                      </Link>{' '}
+                      <span style={{ fontWeight: 700, color: '#DC2626' }}>↓ {m.delta}</span>{' '}
+                      <span style={{ opacity: 0.75 }}>
+                        ({m.prevRank} → {m.currRank})
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* GRÁFICO (ranking do dia) */}
       <div style={{ height: 360, width: '100%' }}>
@@ -649,7 +729,6 @@ export default function Ranking() {
                   if (!compareDateB) throw new Error('Selecione a Data B.');
 
                   const aItems = Array.isArray(data) ? data : [];
-
                   const resB = await fetch(`/api/daily_ranking?date=${encodeURIComponent(compareDateB)}`);
                   if (!resB.ok) throw new Error(`Falha ao buscar ranking da Data B (${resB.status})`);
                   const bJson = await resB.json();
