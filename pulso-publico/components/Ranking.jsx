@@ -17,9 +17,11 @@ import { Bar, Line } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Legend);
 
+/* ============================
+   Helpers
+============================ */
 function getClubName(item) {
   if (!item) return '—';
-  // prioridade: club.name -> club_name -> name -> club string -> club_id truncado
   if (item.club && typeof item.club === 'object' && (item.club.name || item.club.club_name)) {
     return item.club.name ?? item.club.club_name;
   }
@@ -54,6 +56,87 @@ function normalizeSeries(series) {
   return arr;
 }
 
+function isLabelA(label) {
+  return /\(A\)\s*$/.test(String(label));
+}
+
+function isLabelB(label) {
+  return /\(B\)\s*$/.test(String(label));
+}
+
+function stripAB(label) {
+  return String(label).replace(/\s*\((A|B)\)\s*$/, '');
+}
+
+// Paleta para modo manual (até 5)
+const MANUAL_PALETTE = ['#2563EB', '#16A34A', '#7C3AED', '#DC2626', '#0EA5E9'];
+
+// Cores fixas para A/B (bem contrastantes)
+const COLOR_A = '#2563EB'; // azul
+const COLOR_B = '#F97316'; // laranja
+
+function buildAbSummary(aItems, bItems) {
+  const aNames = aItems.map(getClubName).filter((n) => n && n !== '—');
+  const bNames = bItems.map(getClubName).filter((n) => n && n !== '—');
+
+  const setA = new Set(aNames);
+  const setB = new Set(bNames);
+
+  const entered = bNames.filter((n) => !setA.has(n));
+  const exited = aNames.filter((n) => !setB.has(n));
+
+  const aMap = new Map(
+    aItems.map((it) => [
+      getClubName(it),
+      { score: toNumber(it?.score ?? it?.iap), rank: toNumber(it?.rank_position) },
+    ])
+  );
+  const bMap = new Map(
+    bItems.map((it) => [
+      getClubName(it),
+      { score: toNumber(it?.score ?? it?.iap), rank: toNumber(it?.rank_position) },
+    ])
+  );
+
+  const common = aNames.filter((n) => setB.has(n));
+
+  let bestUp = null;
+  let bestDown = null;
+  const deltas = [];
+
+  for (const name of common) {
+    const a = aMap.get(name);
+    const b = bMap.get(name);
+    const as = a?.score;
+    const bs = b?.score;
+    if (as === null || as === undefined || bs === null || bs === undefined) continue;
+
+    const delta = bs - as;
+    deltas.push({
+      name,
+      delta,
+      aScore: as,
+      bScore: bs,
+      aRank: a?.rank ?? null,
+      bRank: b?.rank ?? null,
+    });
+
+    if (!bestUp || delta > bestUp.delta) bestUp = { name, delta };
+    if (!bestDown || delta < bestDown.delta) bestDown = { name, delta };
+  }
+
+  return {
+    entered,
+    exited,
+    bestUp,
+    bestDown,
+    deltas: deltas.sort((x, y) => y.delta - x.delta),
+  };
+}
+
+/* ============================
+   Component
+============================ */
 export default function Ranking() {
   /* ============================
      Ranking diário (tabela + bar)
@@ -135,7 +218,9 @@ export default function Ranking() {
   const [clubs, setClubs] = useState([]);
   const [clubsLoading, setClubsLoading] = useState(true);
 
-  // nomes/labels selecionados (até 5 normalmente; no modo A+B pode chegar a 10)
+  // labels selecionados:
+  // - modo manual: até 5 (sem sufixo A/B)
+  // - modo A+B: até 10 ("Time (A)" e "Time (B)")
   const [compareSelected, setCompareSelected] = useState([]);
   const [compareMap, setCompareMap] = useState({}); // { [label]: normalizedSeries[] }
   const [compareBusy, setCompareBusy] = useState(false);
@@ -145,6 +230,9 @@ export default function Ranking() {
   const [compareDateB, setCompareDateB] = useState(''); // YYYY-MM-DD
   const [top5BLoading, setTop5BLoading] = useState(false);
   const [top5BError, setTop5BError] = useState(null);
+
+  // Resumo A->B
+  const [abSummary, setAbSummary] = useState(null);
 
   const fetchClubs = async () => {
     setClubsLoading(true);
@@ -176,6 +264,12 @@ export default function Ranking() {
       .slice(0, n);
   }
 
+  const isABMode = useMemo(() => {
+    return compareSelected.some((x) => /\((A|B)\)\s*$/.test(String(x)));
+  }, [compareSelected]);
+
+  const maxSelectable = isABMode ? 10 : 5;
+
   const toggleCompare = (clubName) => {
     setCompareError(null);
     setTop5BError(null);
@@ -184,8 +278,8 @@ export default function Ranking() {
       const exists = prev.includes(clubName);
       if (exists) return prev.filter((x) => x !== clubName);
 
-      // Limite: se já estiver em modo A+B (10), não adiciona mais; se não, limita a 5
-      const max = prev.some((x) => /\((A|B)\)\s*$/.test(String(x))) ? 10 : 5;
+      const ab = prev.some((x) => /\((A|B)\)\s*$/.test(String(x)));
+      const max = ab ? 10 : 5;
       if (prev.length >= max) return prev;
 
       return [...prev, clubName];
@@ -204,8 +298,7 @@ export default function Ranking() {
       try {
         const updates = {};
         for (const label of need) {
-          // Suporta rótulos do modo A/B: "Cruzeiro (A)" -> "Cruzeiro"
-          const realName = String(label).replace(/\s*\((A|B)\)\s*$/, '');
+          const realName = stripAB(label);
           const res = await fetch(`/api/club_series?club=${encodeURIComponent(realName)}&limit_days=180`);
           if (!res.ok) throw new Error(`Falha ao buscar série: ${label}`);
           const json = await res.json();
@@ -253,11 +346,34 @@ export default function Ranking() {
 
     const labels = Array.from(dateSet).sort((a, b) => String(a).localeCompare(String(b)));
 
+    // Datasets com cores:
+    // - A: azul fixo
+    // - B: laranja fixo
+    // - manual: paleta rotativa
+    let manualIndex = 0;
+
     const datasets = selected.map((label) => {
       const map = new Map(compareMap[label].map((r) => [r.date, r.value]));
+      const dataArr = labels.map((d) => (map.has(d) ? map.get(d) : null));
+
+      let color = '#6B7280'; // fallback (cinza)
+
+      if (isLabelA(label)) color = COLOR_A;
+      else if (isLabelB(label)) color = COLOR_B;
+      else {
+        color = MANUAL_PALETTE[manualIndex % MANUAL_PALETTE.length];
+        manualIndex += 1;
+      }
+
       return {
         label,
-        data: labels.map((d) => (map.has(d) ? map.get(d) : null)),
+        data: dataArr,
+        borderColor: color,
+        backgroundColor: color,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        borderWidth: 2,
+        spanGaps: false, // não inventa linha onde há null
       };
     });
 
@@ -268,7 +384,10 @@ export default function Ranking() {
     return {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: true }, tooltip: { enabled: true } },
+      plugins: {
+        legend: { display: true },
+        tooltip: { enabled: true },
+      },
       scales: { y: { beginAtZero: true } },
       elements: { line: { tension: 0.25 } },
     };
@@ -401,7 +520,10 @@ export default function Ranking() {
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ fontSize: 12 }}>
-              Data A: <strong>{selectedDate || 'último dia'}</strong>
+              Data A: <strong>{selectedDate || 'último dia'}</strong>{' '}
+              <span style={{ marginLeft: 8 }}>
+                (cor A: <span style={{ color: COLOR_A, fontWeight: 700 }}>azul</span>)
+              </span>
             </div>
 
             <label style={{ fontSize: 12 }}>Data B:</label>
@@ -414,6 +536,10 @@ export default function Ranking() {
               }}
             />
 
+            <div style={{ fontSize: 12 }}>
+              cor B: <span style={{ color: COLOR_B, fontWeight: 700 }}>laranja</span>
+            </div>
+
             <button
               onClick={async () => {
                 setTop5BError(null);
@@ -421,29 +547,45 @@ export default function Ranking() {
                 try {
                   if (!compareDateB) throw new Error('Selecione a Data B.');
 
-                  // Top 5 da tabela atual (Data A)
-                  const topA = (Array.isArray(tableItems) ? tableItems : [])
+                  // Ranking A: usa o data atual (já é o ranking do dia A)
+                  const aItems = Array.isArray(data) ? data : [];
+
+                  // Ranking B: busca da API
+                  const qsB = `?date=${encodeURIComponent(compareDateB)}`;
+                  const resB = await fetch(`/api/daily_ranking${qsB}`);
+                  if (!resB.ok) throw new Error(`Falha ao buscar ranking da Data B (${resB.status})`);
+                  const bJson = await resB.json();
+                  const bItems = Array.isArray(bJson) ? bJson : [];
+
+                  // Top 5 A e B (para o gráfico)
+                  const topA = aItems
                     .map((it) => getClubName(it))
                     .filter((n) => n && n !== '—')
                     .slice(0, 5);
 
-                  // Top 5 da Data B
-                  const topB = await fetchTopNByDate(compareDateB, 5);
+                  const topB = bItems
+                    .map((it) => getClubName(it))
+                    .filter((n) => n && n !== '—')
+                    .slice(0, 5);
 
-                  // Rotula A/B para não conflitar (ex.: "Cruzeiro (A)" e "Cruzeiro (B)")
+                  // Resumo A->B (Top 20 para dar contexto)
+                  setAbSummary(buildAbSummary(aItems.slice(0, 20), bItems.slice(0, 20)));
+
+                  // Seleção com rótulos A/B (evita colisões)
                   const merged = [...topA.map((n) => `${n} (A)`), ...topB.map((n) => `${n} (B)`)];
 
                   setCompareError(null);
-                  setCompareMap({}); // força recarga limpa
+                  setCompareMap({});
                   setCompareSelected(merged);
                 } catch (e) {
                   setTop5BError(e);
+                  setAbSummary(null);
                 } finally {
                   setTop5BLoading(false);
                 }
               }}
               disabled={top5BLoading}
-              title="Carrega Top 5 da Data A (tabela atual) + Top 5 da Data B e sobrepõe no gráfico"
+              title="Carrega Top 5 da Data A + Top 5 da Data B e sobrepõe no gráfico"
             >
               Carregar Top 5 A + B
             </button>
@@ -452,8 +594,47 @@ export default function Ranking() {
           </div>
 
           {top5BError ? <div style={{ fontSize: 12 }}>Erro: {top5BError.message}</div> : null}
+
+          {abSummary ? (
+            <div style={{ border: '1px solid #eee', borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Resumo A → B</div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Entraram no Top 5 (B)</div>
+                  <div style={{ fontSize: 13 }}>{abSummary.entered.length ? abSummary.entered.join(', ') : '—'}</div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Saíram do Top 5 (A)</div>
+                  <div style={{ fontSize: 13 }}>{abSummary.exited.length ? abSummary.exited.join(', ') : '—'}</div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Maior alta (Δ IAP)</div>
+                  <div style={{ fontSize: 13 }}>
+                    {abSummary.bestUp ? `${abSummary.bestUp.name}: +${abSummary.bestUp.delta.toFixed(2)}` : '—'}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Maior queda (Δ IAP)</div>
+                  <div style={{ fontSize: 13 }}>
+                    {abSummary.bestDown ? `${abSummary.bestDown.name}: ${abSummary.bestDown.delta.toFixed(2)}` : '—'}
+                  </div>
+                </div>
+              </div>
+
+              {abSummary.deltas?.length ? (
+                <div style={{ fontSize: 12, opacity: 0.8 }}>
+                  Observação: variações calculadas para clubes presentes nos dois rankings (Top 20 A e Top 20 B).
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
+        {/* MODO MANUAL */}
         <div style={{ fontSize: 12, opacity: 0.8 }}>
           Modo manual: selecione até 5 clubes para sobrepor as linhas no mesmo gráfico.
         </div>
@@ -464,9 +645,7 @@ export default function Ranking() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
             {clubsForCompareUI.map((name) => {
               const checked = compareSelected.includes(name);
-              const isABMode = compareSelected.some((x) => /\((A|B)\)\s*$/.test(String(x)));
-              const max = isABMode ? 10 : 5;
-              const disabled = !checked && compareSelected.length >= max;
+              const disabled = !checked && compareSelected.length >= maxSelectable;
 
               return (
                 <label
@@ -484,12 +663,12 @@ export default function Ranking() {
         {/* AÇÕES */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ fontSize: 12, opacity: 0.8 }}>
-            Selecionados: <strong>{compareSelected.length}</strong>/{compareSelected.some((x) => /\((A|B)\)\s*$/.test(String(x))) ? 10 : 5}
+            Selecionados: <strong>{compareSelected.length}</strong>/{maxSelectable}
           </div>
 
           <button
             onClick={() => {
-              // Top 5 do ranking atual (tabela exibida)
+              // Top 5 do ranking exibido (tabela atual)
               const source = Array.isArray(tableItems) ? tableItems : [];
               const top = source
                 .map((it) => getClubName(it))
@@ -498,8 +677,9 @@ export default function Ranking() {
 
               setTop5BError(null);
               setCompareError(null);
+              setAbSummary(null);
               setCompareSelected(top);
-              // não zera compareMap: effect carrega o que estiver faltando
+              // não zera compareMap: o effect carrega o que faltar
             }}
             disabled={!Array.isArray(tableItems) || tableItems.length === 0}
             title="Seleciona automaticamente os 5 primeiros do ranking exibido"
@@ -513,6 +693,7 @@ export default function Ranking() {
               setCompareMap({});
               setCompareError(null);
               setTop5BError(null);
+              setAbSummary(null);
             }}
             disabled={compareSelected.length === 0}
           >
@@ -529,7 +710,9 @@ export default function Ranking() {
             <Line data={{ labels: compareAligned.labels, datasets: compareAligned.datasets }} options={lineOptions} />
           </div>
         ) : (
-          <div style={{ fontSize: 12, opacity: 0.8 }}>Selecione pelo menos 1 clube para visualizar o gráfico comparativo.</div>
+          <div style={{ fontSize: 12, opacity: 0.8 }}>
+            Selecione pelo menos 1 clube (modo manual) ou use “Carregar Top 5 A + B”.
+          </div>
         )}
       </div>
     </div>
