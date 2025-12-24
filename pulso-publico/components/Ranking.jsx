@@ -17,7 +17,6 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
 function getClubName(item) {
   if (!item) return '—';
-  // prioridade: club.name -> club_name -> name -> club -> club_id truncated
   if (item.club && typeof item.club === 'object' && (item.club.name || item.club.club_name)) {
     return item.club.name ?? item.club.club_name;
   }
@@ -70,7 +69,6 @@ export default function Ranking() {
 
   const rows = useMemo(() => {
     if (!Array.isArray(data)) return [];
-    // Mantém somente linhas com valor numérico (score ou iap)
     return data
       .map((item) => {
         const raw = item?.score ?? item?.iap;
@@ -127,28 +125,24 @@ export default function Ranking() {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <h2 style={{ margin: 0 }}>Ranking Diário</h2>
-      <div style={{ fontSize: 13, opacity: 0.8 }}>
+
+      <div style={{ fontSize: 13, opacity: 0.85 }}>
         Exibindo: <strong>{selectedDate || 'último dia disponível'}</strong>
       </div>
 
-
-      {/* FILTRO DE DATA */}
+      {/* FILTRO DE DATA (AUTO-APLICA) */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <label style={{ fontSize: 14 }}>Data:</label>
 
         <input
           type="date"
           value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
+          onChange={(e) => {
+            const d = e.target.value;
+            setSelectedDate(d);
+            fetchData(d); // auto-aplica
+          }}
         />
-
-        <button
-          onClick={() => fetchData(selectedDate)}
-          disabled={!selectedDate || loading}
-          title={!selectedDate ? 'Selecione uma data' : 'Aplicar filtro'}
-        >
-          Aplicar
-        </button>
 
         <button
           onClick={() => {
@@ -187,7 +181,6 @@ export default function Ranking() {
         </tbody>
       </table>
 
-      {/* NOTA */}
       {rows.length === 0 ? (
         <div style={{ fontSize: 12, opacity: 0.8 }}>
           Observação: nenhuma linha tinha valor numérico em <code>score</code> ou <code>iap</code>.
