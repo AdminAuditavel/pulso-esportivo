@@ -36,7 +36,7 @@ function getClubName(item) {
 }
 
 function toNumber(x) {
-  const n = typeof x === 'string' ? Number(x.replace(',', '.')) : Number(x);
+  const n = typeof x === 'string' ? Number(String(x).replace(',', '.')) : Number(x);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -45,11 +45,14 @@ export default function Ranking() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchData = async () => {
+  const [selectedDate, setSelectedDate] = useState(''); // YYYY-MM-DD
+
+  const fetchData = async (date) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/daily_ranking');
+      const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+      const res = await fetch(`/api/daily_ranking${qs}`);
       if (!res.ok) throw new Error('Erro ao buscar dados');
       const json = await res.json();
       setData(json);
@@ -61,7 +64,8 @@ export default function Ranking() {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData(''); // carrega "último"/padrão
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rows = useMemo(() => {
@@ -107,20 +111,52 @@ export default function Ranking() {
   }, []);
 
   if (loading) return <div>Carregando ranking…</div>;
+
   if (error)
     return (
       <div>
         Erro ao buscar ranking: {error.message}
-        <button onClick={fetchData} style={{ marginLeft: 12 }}>
+        <button onClick={() => fetchData(selectedDate)} style={{ marginLeft: 12 }}>
           Tentar novamente
         </button>
       </div>
     );
+
   if (!data || !Array.isArray(data) || data.length === 0) return <div>Nenhum dado disponível</div>;
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <h2 style={{ margin: 0 }}>Ranking Diário</h2>
+
+      {/* FILTRO DE DATA */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 14 }}>Data:</label>
+
+        <input
+          type="date"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+        />
+
+        <button
+          onClick={() => fetchData(selectedDate)}
+          disabled={!selectedDate || loading}
+          title={!selectedDate ? 'Selecione uma data' : 'Aplicar filtro'}
+        >
+          Aplicar
+        </button>
+
+        <button
+          onClick={() => {
+            setSelectedDate('');
+            fetchData('');
+          }}
+          disabled={loading}
+          title="Voltar para o padrão (último dia disponível)"
+        >
+          Hoje/Último
+        </button>
+      </div>
 
       {/* GRÁFICO */}
       <div style={{ height: 360, width: '100%' }}>
