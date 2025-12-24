@@ -1,4 +1,6 @@
 // app/api/daily_ranking/route.js
+
+// app/api/daily_ranking/route.js
 export async function GET(req) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -11,12 +13,14 @@ export async function GET(req) {
       });
     }
 
-    // preserva e reaplica query params do pedido original (permitindo limit, offset, filtros, etc.)
     const incoming = new URL(req.url).searchParams;
     const params = new URLSearchParams(incoming);
-    // Força select e ordenação padrão (se quiser outra ordenação, passe ?order=campo.asc|desc no frontend)
-    if (!params.has('select')) params.set('select', '*');
+
+    // Se o frontend não passou select, fazemos um select que traz o clube relacionado:
+    // Ajuste "clubs(name)" se a tabela/coluna do seu projeto for diferente.
+    if (!params.has('select')) params.set('select', '*,club:clubs(name)');
     if (!params.has('order')) params.set('order', 'score.desc');
+    if (!params.has('limit')) params.set('limit', '20');
 
     const target = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/daily_ranking?${params.toString()}`;
 
