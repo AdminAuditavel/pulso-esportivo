@@ -1,6 +1,4 @@
 // app/api/daily_ranking/route.js
-
-// app/api/daily_ranking/route.js
 export async function GET(req) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -16,15 +14,67 @@ export async function GET(req) {
     const incoming = new URL(req.url).searchParams;
     const params = new URLSearchParams(incoming);
 
-    // Se o frontend não passou select, fazemos um select que traz o clube relacionado:
-    // Ajuste "clubs(name)" se a tabela/coluna do seu projeto for diferente.
-    if (!params.has('select')) params.set('select', '*,club:clubs(name)');
+    if (!params.has('select')) params.set('select', '*');
     if (!params.has('order')) params.set('order', 'score.desc');
     if (!params.has('limit')) params.set('limit', '20');
 
-    const target = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/daily_ranking?${params.toString()}`;
+    const base = supabaseUrl.replace(/\/$/, '') + '/rest/v1';
 
-    const res = await fetch(target, {
+    // tenta nome de recurso singular primeiro, se falhar tenta plural
+    const candidates = ['daily_ranking', 'daily_rankings'];
+    let rankings = null;
+    let lastErrorText = '';
+
+    for (const resource of candidates) {
+      const target = `${base}/${resource}?${params.toString()}`;
+      const res = await fetch(target, {
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+          Accept: 'application/json',
+        },
+      });
+
+      const text = await res.text();
+      if (res.ok) {
+        try {
+          rankings = JSON.parse(text);
+        } catch (e) {
+          rankings = [];
+        }
+        break;
+      } else {
+        lastErrorText = text;
+      }
+    }
+
+    if (!rankings) {
+      return new Response(
+        JSON.stringify({
+          error: 'Erro ao buscar daily_ranking (tenteu singular/plural)',
+          details: lastErrorText,
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Se não há club_id, retorna direto
+    const clubIds = Array.from(new Set(rankings.map((r) => r.club_id).filter(Boolean)));
+    if (clubIds.length === 0) {
+      return new Response(JSON.stringify(rankings), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Busca nomes dos clubes pela lista de ids
+    const clubsUrl = new URL(`${base}/clubs`);
+    const clubParams = new URLSearchParams();
+    clubParams.set('select', 'id,name');
+    clubParams.set('id', `in.(${clubIds.join(',')})`);
+    clubsUrl.search = clubParams.toString();
+
+    const clubsRes = await fetch(clubsUrl.toString(), {
       headers: {
         apikey: supabaseKey,
         Authorization: `Bearer ${supabaseKey}`,
@@ -32,11 +82,31 @@ export async function GET(req) {
       },
     });
 
-    const text = await res.text();
-    const contentType = res.headers.get('content-type') || '';
-    const headersOut = { 'Content-Type': contentType.includes('application/json') ? 'application/json' : 'text/plain' };
+    const clubsText = await clubsRes.text();
+    let clubs = [];
+    if (clubsRes.ok) {
+      try {
+        clubs = JSON.parse(clubsText);
+      } catch (e) {
+        clubs = [];
+      }
+    }
 
-    return new Response(text, { status: res.status, headers: headersOut });
+    const clubsMap = clubs.reduce((acc, c) => {
+      if (c && c.id) acc[c.id] = c.name ?? null;
+      return acc;
+    }, {});
+
+    // Anexa objeto club: { name } a cada item (se encontrado)
+    const merged = rankings.map((item) => {
+      const clubName = item.club_id ? clubsMap[item.club_id] ?? null : null;
+      return { ...item, club: clubName ? { name: clubName } : item.club ?? null };
+    });
+
+    return new Response(JSON.stringify(merged), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   } catch (err) {
     console.error('Erro na rota /api/daily_ranking:', err);
     return new Response(JSON.stringify({ error: 'Erro interno na API' }), {
