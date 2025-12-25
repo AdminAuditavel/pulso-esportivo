@@ -54,7 +54,7 @@ export default function MiniSparkline({ data = [], width = 120, height = 28, str
       d += `M ${p[0].toFixed(2)} ${p[1].toFixed(2)} `;
       started = true;
     } else {
-      d += `L ${p[0].toFixed(02)} ${p[1].toFixed(02)} `;
+      d += `L ${p[0].toFixed(2)} ${p[1].toFixed(2)} `;
     }
   });
 
