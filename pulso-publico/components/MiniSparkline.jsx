@@ -1,4 +1,4 @@
-
+//pulso-publico/components/MiniSparkline.jsx
 import React from 'react';
 
 /**
