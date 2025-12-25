@@ -1,5 +1,5 @@
 :root{
-  /* Palette requested */
+  /* Paleta solicitada */
   --c-1: #d4cdc5;
   --c-2: #5b88a5;
   --c-3: #f4f4f2;
@@ -10,7 +10,6 @@
   --text: var(--c-4);
   --muted: #6b6b6b;
   --card: #ffffff;
-  --glass: rgba(217,214,210,0.6);
   --radius: 10px;
   --transition: 180ms ease;
 }
@@ -296,7 +295,7 @@
   gap: 12px;
 }
 
-.footerLinks a{
+.footerLink{
   color: var(--muted);
   text-decoration: underline;
 }
@@ -343,4 +342,3 @@
     align-items: center;
   }
 }
-```
