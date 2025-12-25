@@ -180,16 +180,23 @@ export default function Ranking() {
       const qs = date ? `?date=${encodeURIComponent(date)}` : '';
       const res = await fetch(`/api/daily_ranking${qs}`);
       if (!res.ok) throw new Error('Erro ao buscar dados');
+  
       const json = await res.json();
   
-      // compat: aceita array antigo ou envelope novo
-      const arr = Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
+      // compatibilidade:
+      // - API antiga: retorna array direto
+      // - API nova: retorna { resolved_date, data: [...] }
+      const arr = Array.isArray(json)
+        ? json
+        : Array.isArray(json?.data)
+          ? json.data
+          : [];
+  
       setData(arr);
   
       // opcional: se quiser mostrar a data resolvida (fallback)
       if (!Array.isArray(json) && json?.resolved_date) {
-        // você pode salvar em um state e exibir no header
-        // ex: setResolvedDate(json.resolved_date)
+        // setResolvedDate(json.resolved_date)
       }
     } catch (err) {
       setError(err);
