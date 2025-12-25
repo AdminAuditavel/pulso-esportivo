@@ -1,4 +1,4 @@
-
+//pulso-publico/components/TrendBadge.jsx
 import React from 'react';
 
 /**
