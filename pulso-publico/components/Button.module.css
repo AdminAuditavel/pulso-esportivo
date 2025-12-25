@@ -1,0 +1,66 @@
+:root{
+  --btn-primary: #5b88a5;
+  --btn-text-on-primary: #f4f4f2;
+  --btn-shadow: rgba(36,58,105,0.08);
+}
+
+.btn{
+  background: var(--btn-primary);
+  color: var(--btn-text-on-primary);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  box-shadow: 0 6px 18px var(--btn-shadow);
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  line-height: 1;
+}
+
+.btn:hover:not(:disabled){
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(36,58,105,0.10);
+}
+
+.btn:active:not(:disabled){
+  transform: translateY(0);
+  box-shadow: 0 8px 20px rgba(36,58,105,0.08);
+}
+
+.btn:disabled{
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Variante destacada (mais forte) */
+.activeBtn{
+  background: #3f6d88; /* ligeiramente mais escuro */
+  color: var(--btn-text-on-primary);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-weight: 800;
+  box-shadow: 0 10px 26px rgba(36,58,105,0.12);
+}
+
+/* Variante mínima (pequeno) */
+.btnSmall{
+  padding: 6px 8px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/* Reset visual quando usuário quiser link-looks, manter utilitários */
+.btnLink{
+  background: transparent;
+  color: var(--btn-primary);
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(36,58,105,0.06);
+  font-weight: 700;
+}
