@@ -7,28 +7,26 @@ function Header() {
   return (
     <header className={styles.header} role="banner">
       <div className={styles.headerInner}>
-        <Link href="/" className={styles.brand}>
-          <a className={styles.brandLink}>
-            <Image
-              src="/public/Logotipo_Comentaram.png"
-              alt="Comentaram"
-              width={160}
-              height={40}
-              className={styles.logoImage}
-              priority
-            />
-          </a>
+        <Link href="/" className={styles.brandLink}>
+          <Image
+            src="/Logotipo_Comentaram.png"
+            alt="Comentaram — logotipo"
+            width={160}
+            height={40}
+            className={styles.logoImage}
+            priority
+          />
         </Link>
 
         <nav aria-label="Main navigation" className={styles.nav}>
           <ul className={styles.navList}>
-            <li><Link href="/"><a className={styles.navLink}>Home</a></Link></li>
-            <li><Link href="/ranking"><a className={styles.navLink}>Rankings</a></Link></li>
-            <li><Link href="/ranking/esporte"><a className={styles.navLink}>Esporte</a></Link></li>
-            <li><Link href="/ranking/politica"><a className={styles.navLink}>Política</a></Link></li>
-            <li><Link href="/metodologia"><a className={styles.navLink}>Metodologia</a></Link></li>
-            <li><Link href="/fontes"><a className={styles.navLink}>Fontes</a></Link></li>
-            <li><Link href="/sobre"><a className={styles.navLink}>Sobre</a></Link></li>
+            <li><Link href="/" className={styles.navLink}>Home</Link></li>
+            <li><Link href="/ranking" className={styles.navLink}>Rankings</Link></li>
+            <li><Link href="/ranking/esporte" className={styles.navLink}>Esporte</Link></li>
+            <li><Link href="/ranking/politica" className={styles.navLink}>Política</Link></li>
+            <li><Link href="/metodologia" className={styles.navLink}>Metodologia</Link></li>
+            <li><Link href="/fontes" className={styles.navLink}>Fontes</Link></li>
+            <li><Link href="/sobre" className={styles.navLink}>Sobre</Link></li>
           </ul>
         </nav>
       </div>
@@ -53,8 +51,8 @@ export default function Home() {
           </p>
 
           <div className={styles.ctaRow}>
-            <Link href="/ranking"><a className={styles.primaryButton}>Ver Rankings</a></Link>
-            <Link href="/metodologia"><a className={styles.secondaryButton}>Metodologia</a></Link>
+            <Link href="/ranking" className={styles.primaryButton}>Ver Rankings</Link>
+            <Link href="/metodologia" className={styles.secondaryButton}>Metodologia</Link>
             <div className={styles.updateNote}>Última atualização: <strong>agora</strong></div>
           </div>
 
@@ -100,9 +98,9 @@ export default function Home() {
       <footer className={styles.footer}>
         <div>© {new Date().getFullYear()} Comentaram — Dados públicos e agregados</div>
         <div className={styles.footerLinks}>
-          <Link href="/metodologia"><a>Metodologia</a></Link>
-          <Link href="/fontes"><a>Fontes</a></Link>
-          <Link href="/sobre"><a>Sobre</a></Link>
+          <Link href="/metodologia" className={styles.footerLink}>Metodologia</Link>
+          <Link href="/fontes" className={styles.footerLink}>Fontes</Link>
+          <Link href="/sobre" className={styles.footerLink}>Sobre</Link>
         </div>
       </footer>
     </main>
@@ -111,16 +109,14 @@ export default function Home() {
 
 function TopicCard({ title, href, description, emoji }: { title: string; href: string; description: string; emoji?: string }) {
   return (
-    <Link href={href}>
-      <a className={styles.topicCard}>
-        <div className={styles.topicInner}>
-          <div className={styles.topicEmoji}>{emoji}</div>
-          <div>
-            <div className={styles.topicTitle}>{title}</div>
-            <div className={styles.topicDesc}>{description}</div>
-          </div>
+    <Link href={href} className={styles.topicCard}>
+      <div className={styles.topicInner}>
+        <div className={styles.topicEmoji}>{emoji}</div>
+        <div>
+          <div className={styles.topicTitle}>{title}</div>
+          <div className={styles.topicDesc}>{description}</div>
         </div>
-      </a>
+      </div>
     </Link>
   );
 }
