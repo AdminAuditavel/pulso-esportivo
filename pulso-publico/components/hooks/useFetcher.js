@@ -1,3 +1,4 @@
+//pulso-publico/components/hooks/useFetcher.js
 // utilitário fetcher para useSWR
 export default async function fetcher(input, ...args) {
   // input: URL string (já com querystring se necessário)
