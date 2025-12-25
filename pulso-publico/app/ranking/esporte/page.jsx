@@ -3,6 +3,8 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
 import useSWR from 'swr';
 import fetcher from '../../../components/hooks/useFetcher';
 import RankCard from '../../../components/RankCard';
@@ -14,8 +16,6 @@ import styles from './page.module.css';
  * - Busca: /api/daily_ranking?theme=esporte
  * - Toggle Top5/Top10
  * - Usa RankCard para exibir cada clube
- *
- * Se o backend usar outro param, ajuste a URL `rankingKey`.
  */
 
 export default function EsporteRankingPage() {
@@ -52,8 +52,18 @@ export default function EsporteRankingPage() {
   return (
     <main className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Ranking — Esporte</h1>
-        <div className={styles.subtitle}>Top {modeTop} — janela padrão 24h · fontes públicas</div>
+        <div className={styles.headerRow}>
+          <Link href="/" className={styles.logoLink}>
+            <a className={styles.logoAnchor}>
+              <Image src="/Logotipo_Comentaram.png" alt="Comentaram" width={160} height={40} priority />
+            </a>
+          </Link>
+
+          <div className={styles.headerText}>
+            <h1 className={styles.title}>Ranking — Esporte</h1>
+            <div className={styles.subtitle}>Top {modeTop} — janela padrão 24h · fontes públicas</div>
+          </div>
+        </div>
       </header>
 
       <div className={styles.controls}>
