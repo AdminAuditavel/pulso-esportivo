@@ -1,9 +1,14 @@
 :root{
-  --btn-primary: #00ABE4;
-  --btn-text-on-primary: #FFFFFF;
-  --btn-shadow: rgba(36,58,105,0.08);
+  /* Usa as variáveis definidas em controls.module.css (--c-1 .. --c-5).
+     Caso essas variáveis não existam no escopo global, defina-as em :root do CSS global. */
+  --btn-primary: var(--c-1, #337d26); /* primário (verde escuro) */
+  --btn-primary-2: var(--c-2, #549d45); /* variante */
+  --btn-text-on-primary: #ffffff;
+  --btn-shadow: rgba(51,125,38,0.10);
+  --btn-shadow-strong: rgba(51,125,38,0.14);
 }
 
+/* Botão padrão */
 .btn{
   background: var(--btn-primary);
   color: var(--btn-text-on-primary);
@@ -21,16 +26,23 @@
   line-height: 1;
 }
 
+/* Hover / active / focus */
 .btn:hover:not(:disabled){
   transform: translateY(-2px);
-  box-shadow: 0 14px 30px rgba(36,58,105,0.10);
+  box-shadow: 0 14px 30px var(--btn-shadow-strong);
 }
 
 .btn:active:not(:disabled){
   transform: translateY(0);
-  box-shadow: 0 8px 20px rgba(36,58,105,0.08);
+  box-shadow: 0 8px 20px var(--btn-shadow);
 }
 
+.btn:focus{
+  outline: none;
+  box-shadow: 0 8px 22px rgba(51,125,38,0.18);
+}
+
+/* disabled */
 .btn:disabled{
   opacity: 0.6;
   cursor: not-allowed;
@@ -38,14 +50,14 @@
 
 /* Variante destacada (mais forte) */
 .activeBtn{
-  background: #3f6d88; /* ligeiramente mais escuro */
+  background: var(--btn-primary-2);
   color: var(--btn-text-on-primary);
   padding: 8px 12px;
   border-radius: 10px;
   border: none;
   cursor: pointer;
   font-weight: 800;
-  box-shadow: 0 10px 26px rgba(36,58,105,0.12);
+  box-shadow: 0 10px 26px var(--btn-shadow-strong);
 }
 
 /* Variante mínima (pequeno) */
@@ -55,12 +67,20 @@
   border-radius: 8px;
 }
 
-/* Reset visual quando usuário quiser link-looks, manter utilitários */
+/* Link-look */
 .btnLink{
   background: transparent;
   color: var(--btn-primary);
   padding: 6px 8px;
   border-radius: 8px;
-  border: 1px solid rgba(36,58,105,0.06);
+  border: 1px solid rgba(51,125,38,0.08);
   font-weight: 700;
+}
+
+/* Utility: inverse button (quando quiser botão claro com texto verde) */
+.btnInverse{
+  background: #ffffff;
+  color: var(--btn-primary);
+  border: 1px solid rgba(51,125,38,0.08);
+  box-shadow: none;
 }
