@@ -157,17 +157,28 @@ export function buildAbSummary(aItems, bItems) {
   const entered = bNames.filter((n) => !setA.has(n));
   const exited = aNames.filter((n) => !setB.has(n));
 
+  function pickScore(it) {
+    return toNumber(
+      it?.value ??
+      it?._computed_value ??
+      it?.iap_score ??
+      it?.score ??
+      it?.iap ??
+      null
+    );
+  }
+  
   const aMap = new Map(
     aItems.map((it) => [
       getClubName(it),
-      { score: pickIapFromItem(it), rank: toNumber(it?.rank_position) },
+      { score: pickScore(it), rank: toNumber(it?.rank_position) },
     ])
   );
   
   const bMap = new Map(
     bItems.map((it) => [
       getClubName(it),
-      { score: pickIapFromItem(it), rank: toNumber(it?.rank_position) },
+      { score: pickScore(it), rank: toNumber(it?.rank_position) },
     ])
   );
 
