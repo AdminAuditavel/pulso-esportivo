@@ -131,6 +131,22 @@ export function formatDateBR(yyyyMMdd) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+function pickIapFromItem(it) {
+  // ordem: tenta todos os campos mais prováveis
+  return (
+    toNumber(it?._computed_value) ??
+    toNumber(it?.iap_score) ??
+    toNumber(it?.score) ??
+    toNumber(it?.iap) ??
+    toNumber(it?.value) ??
+    // extras comuns em APIs
+    toNumber(it?.iap_total) ??
+    toNumber(it?.iapScore) ??
+    toNumber(it?.iapValue) ??
+    null
+  );
+}
+
 export function buildAbSummary(aItems, bItems) {
   const aNames = aItems.map(getClubName).filter((n) => n && n !== '—');
   const bNames = bItems.map(getClubName).filter((n) => n && n !== '—');
@@ -144,13 +160,14 @@ export function buildAbSummary(aItems, bItems) {
   const aMap = new Map(
     aItems.map((it) => [
       getClubName(it),
-      { score: toNumber(it?.score ?? it?.iap), rank: toNumber(it?.rank_position) },
+      { score: pickIapFromItem(it), rank: toNumber(it?.rank_position) },
     ])
   );
+  
   const bMap = new Map(
     bItems.map((it) => [
       getClubName(it),
-      { score: toNumber(it?.score ?? it?.iap), rank: toNumber(it?.rank_position) },
+      { score: pickIapFromItem(it), rank: toNumber(it?.rank_position) },
     ])
   );
 
