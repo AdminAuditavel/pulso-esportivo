@@ -1,10 +1,10 @@
 :root{
   /* Paleta solicitada */
-  --c-1: #D2EEFA;
-  --c-2: #A3D8F1;
-  --c-3: #54A6E1;
+  --c-1: #0fc3e8;
+  --c-2: #0194be;
+  --c-3: #e2d397;
   --c-4: #255DAA;
-  --c-5: #DE525E;
+  --c-5: #f07e13;
   --c-6: #FFFFFF;
 
   --bg: var(--c-6);
