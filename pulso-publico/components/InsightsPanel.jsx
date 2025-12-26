@@ -1,4 +1,3 @@
-//components/InsightsPanel.jsx
 'use client';
 
 import React, { useMemo } from 'react';
@@ -154,7 +153,9 @@ export default function InsightsPanel({
             </span>
           </div>
         ) : (
-          <div style={{ fontSize: 12, opacity: 0.8 }}>—</div>
+          <div style={{ fontSize: 12, opacity: 0.8 }}>
+            — (IAP ausente para esta data ou para o dia anterior; impossível calcular Δ)
+          </div>
         )}
       </div>
 
@@ -171,7 +172,9 @@ export default function InsightsPanel({
             </span>
           </div>
         ) : (
-          <div style={{ fontSize: 12, opacity: 0.8 }}>—</div>
+          <div style={{ fontSize: 12, opacity: 0.8 }}>
+            — (IAP ausente para esta data ou para o dia anterior; impossível calcular Δ)
+          </div>
         )}
       </div>
 
