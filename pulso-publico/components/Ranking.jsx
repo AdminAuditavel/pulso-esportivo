@@ -27,10 +27,10 @@ import {
   prevDay,
   getAggregationDateFromItem,
   formatDateBR,
-} from '../lib/rankingUtils';
-
-import {
   NF,
+  MANUAL_PALETTE,
+  COLOR_A,
+  COLOR_B
 } from '../lib/rankingUtils';
 
 // Chart.js registration (if not already globally registered elsewhere)
@@ -45,11 +45,6 @@ import {
   Legend,
 } from 'chart.js';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Legend);
-
-// cores usadas para comparações (A / B) e paleta manual
-const MANUAL_PALETTE = ['#2563EB', '#16A34A', '#7C3AED', '#DC2626', '#0EA5E9'];
-const COLOR_A = '#2563EB'; // azul (Data A)
-const COLOR_B = '#F97316'; // laranja (Data B)
 
 /**
  * Refatorado Ranking.jsx (delegando render a subcomponentes)
