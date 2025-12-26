@@ -6,6 +6,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
+import { Line } from 'react-chartjs-2';
 
 import fetcher from './hooks/useFetcher';
 import TrendBadge from './TrendBadge';
@@ -19,7 +20,6 @@ import InsightsPanel from './InsightsPanel';
 import TopMovers from './TopMovers';
 import ChartPanel from './ChartPanel';
 import RankingTable from './RankingTable';
-import { Line } from 'react-chartjs-2';
 
 import {
   getClubName,
@@ -28,10 +28,8 @@ import {
   prevDay,
   getAggregationDateFromItem,
   formatDateBR,
+  buildAbSummary,
   NF,
-  MANUAL_PALETTE,
-  COLOR_A,
-  COLOR_B
 } from '../lib/rankingUtils';
 
 // Chart.js registration (if not already globally registered elsewhere)
@@ -47,24 +45,25 @@ import {
 } from 'chart.js';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Legend);
 
-/**
- * Refatorado Ranking.jsx (delegando render a subcomponentes)
- * Mantém toda a lógica original: SWR, prev-day fetch (AbortController), compare A/B etc.
- */
+// cores usadas para comparações (A / B) e paleta manual
+const MANUAL_PALETTE = ['#2563EB', '#16A34A', '#7C3AED', '#DC2626', '#0EA5E9'];
+const COLOR_A = '#2563EB'; // azul (Data A)
+const COLOR_B = '#F97316'; // laranja (Data B)
 
+/**
+ * Ranking (refatorado, completo)
+ * - Mantém comportamento anterior: SWR, prev-day fetch, comparação A vs B, Top 5 do dia, tabela, gráficos.
+ */
 export default function Ranking() {
+  /* ========== filtros / estados ========== */
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedClub, setSelectedClub] = useState('');
 
-  // For resolved/requested display
+  // requested/resolved date display
   const [resolvedDate, setResolvedDate] = useState('');
   const [requestedDate, setRequestedDate] = useState('');
 
-  // refs for abort controllers
-  const prevFetchCtrlRef = useRef(null);
-  const compareFetchCtrlRef = useRef(null);
-
-  // SWR daily ranking
+  // SWR: daily ranking
   const rankingKey = selectedDate ? `/api/daily_ranking?date=${encodeURIComponent(selectedDate)}` : '/api/daily_ranking';
   const { data: rankingJson, error: rankingError, isValidating: rankingLoading, mutate: mutateRanking } = useSWR(rankingKey, fetcher, {
     revalidateOnFocus: false,
@@ -83,6 +82,7 @@ export default function Ranking() {
   const { data: clubsJson, isValidating: clubsLoading } = useSWR('/api/clubs', fetcher, { revalidateOnFocus: false });
   const clubs = Array.isArray(clubsJson) ? clubsJson : [];
 
+  // effective aggregation date used for prev-day fetch etc
   const effectiveDate = useMemo(() => {
     if (resolvedDate) return resolvedDate;
     if (selectedDate) return selectedDate;
@@ -90,6 +90,7 @@ export default function Ranking() {
     return getAggregationDateFromItem(data[0]) || '';
   }, [resolvedDate, selectedDate, data]);
 
+  // table / rows
   const clubOptions = useMemo(() => {
     if (!Array.isArray(data)) return [];
     const names = data.map(getClubName).filter((n) => n && n !== '—');
@@ -117,7 +118,8 @@ export default function Ranking() {
     return selectedClub ? rows.map((r) => r.rawItem) : Array.isArray(data) ? data : [];
   }, [selectedClub, rows, data]);
 
-  /* prev-day fetch for trend */
+  /* ========== prev-day (trend) ========== */
+  const prevFetchCtrlRef = useRef(null);
   const [prevRankMap, setPrevRankMap] = useState(new Map());
   const [prevMetricsMap, setPrevMetricsMap] = useState(new Map());
   const [prevDateUsed, setPrevDateUsed] = useState('');
@@ -223,11 +225,18 @@ export default function Ranking() {
     return <TrendBadge direction="flat" value={0} />;
   }
 
-  /* === comparison & series logic remains in this file (no change in behavior) === */
-  const [compareSelected, setCompareSelected] = useState([]);
-  const [compareMap, setCompareMap] = useState({});
+  /* ========== compare A/B (series) ========== */
+  const compareFetchCtrlRef = useRef(null);
+  const [compareSelected, setCompareSelected] = useState([]); // labels (e.g. "Club (A)" or "Club")
+  const [compareMap, setCompareMap] = useState({}); // { label: normalizedSeries[] }
   const [compareBusy, setCompareBusy] = useState(false);
   const [compareError, setCompareError] = useState(null);
+
+  // states for Data B / top5 flow
+  const [compareDateB, setCompareDateB] = useState('');
+  const [top5BLoading, setTop5BLoading] = useState(false);
+  const [top5BError, setTop5BError] = useState(null);
+  const [abSummary, setAbSummary] = useState(null);
 
   useEffect(() => {
     const need = compareSelected.filter((label) => !compareMap[label]);
@@ -268,7 +277,8 @@ export default function Ranking() {
       try { ctrl.abort(); } catch {}
       compareFetchCtrlRef.current = null;
     };
-  }, [compareSelected, compareMap]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compareSelected]);
 
   const compareAligned = useMemo(() => {
     const selected = compareSelected.filter((label) => compareMap[label]);
@@ -308,7 +318,17 @@ export default function Ranking() {
     return { labels, datasets };
   }, [compareSelected, compareMap]);
 
-  /* Render */
+  const lineOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: true }, tooltip: { enabled: true } },
+      scales: { y: { beginAtZero: true } },
+      elements: { line: { tension: 0.25 } },
+    };
+  }, []);
+
+  /* ========== render guards ========== */
   if (rankingLoading) return <div>Carregando ranking…</div>;
 
   if (rankingError)
@@ -325,9 +345,10 @@ export default function Ranking() {
 
   const linkClub = (name) => `/club/${encodeURIComponent(name)}`;
 
+  /* ========== JSX ========== */
   return (
     <div style={{ display: 'grid', gap: 18 }}>
-      <HeaderLogo title="Ranking Diário" category="Esporte"/>
+      <HeaderLogo title="Ranking Diário" category="Esporte" />
 
       <div style={{ fontSize: 13, opacity: 0.85 }}>
         Exibindo: <strong>{formatDateBR(effectiveDate)}</strong>
@@ -407,11 +428,12 @@ export default function Ranking() {
       {/* Table */}
       <RankingTable tableItems={tableItems} renderTrend={renderTrend} linkClub={linkClub} />
 
-      {/* Comparação multi-clubes (mantida na mesma página para evitar regressão funcional) */}
+      {/* ============================
+          COMPARAÇÃO MULTI-CLUBES (A vs B)
+         ============================ */}
       <div style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12, display: 'grid', gap: 10 }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>Comparar clubes — evolução do IAP</div>
 
-        {/* Reaproveitei o markup já existente (mantendo comportamento) */}
         <div style={{ display: 'grid', gap: 8 }}>
           <div style={{ fontSize: 12, opacity: 0.8 }}>
             Top 5 vs Top 5: compara o Top 5 do ranking exibido (Data A) com o Top 5 de uma segunda data (Data B).
@@ -419,21 +441,15 @@ export default function Ranking() {
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ fontSize: 12 }}>
-              Data A: <strong>{formatDateBR(effectiveDate)}</strong>{' '}
-              <span style={{ marginLeft: 8 }}>
-                (cor A: <span style={{ color: COLOR_A, fontWeight: 700 }}>azul</span>)
-              </span>
+              Data A: <strong>{formatDateBR(effectiveDate)}</strong>
+              <span style={{ marginLeft: 8 }}>(cor A: <span style={{ color: COLOR_A, fontWeight: 700 }}>azul</span>)</span>
             </div>
 
             <label style={{ fontSize: 12 }}>Data B:</label>
             <input
               type="date"
-              value={compareSelected?.compareDateB ?? ''}
-              onChange={(e) => {
-                // local handling to keep parity with previous behavior: set a temporary state via compareSelected hook
-                // to avoid changing earlier behavior we reuse compareSelected state to store date? Instead, maintain simple local effect:
-                // For consistency with previous code path (we used separate state earlier), we add a tiny local state here.
-              }}
+              value={compareDateB}
+              onChange={(e) => { setCompareDateB(e.target.value); setTop5BError(null); }}
               className={ctrlStyles.dateInput}
             />
 
@@ -444,23 +460,83 @@ export default function Ranking() {
             <button
               className={btnStyles.btn}
               onClick={async () => {
-                // keep the same action as before — load top5 B and populate compareSelected
-                // Use existing data variable for A
+                setTop5BError(null);
+                setTop5BLoading(true);
                 try {
-                  // prompt user to choose date via browser control — this handler kept minimal to avoid regressions
-                  // In your previous code this function had more robust flow; if you'd like I can extract it next.
+                  if (!compareDateB) throw new Error('Selecione a Data B.');
+                  const aItems = Array.isArray(data) ? data : [];
+
+                  const resB = await fetch(`/api/daily_ranking?date=${encodeURIComponent(compareDateB)}`);
+                  if (!resB.ok) throw new Error(`Falha ao buscar ranking da Data B (${resB.status})`);
+                  const bJson = await resB.json();
+                  const bItems = Array.isArray(bJson) ? bJson : Array.isArray(bJson?.data) ? bJson.data : [];
+
+                  // resumo A ↔ B
+                  setAbSummary(buildAbSummary(aItems.slice(0, 20), bItems.slice(0, 20)));
+
+                  const topA = aItems.map((it) => getClubName(it)).filter((n) => n && n !== '—').slice(0, 5);
+                  const topB = bItems.map((it) => getClubName(it)).filter((n) => n && n !== '—').slice(0, 5);
+                  const merged = [...topA.map((n) => `${n} (A)`), ...topB.map((n) => `${n} (B)`)];
+
+                  setCompareError(null);
+                  setCompareMap({});
+                  setCompareSelected(merged);
                 } catch (e) {
-                  // noop
+                  setTop5BError(e);
+                  setAbSummary(null);
+                } finally {
+                  setTop5BLoading(false);
                 }
               }}
-              disabled={false}
+              disabled={top5BLoading}
             >
               Carregar Top 5 A + B
             </button>
+
+            {top5BLoading ? <span style={{ fontSize: 12, opacity: 0.75 }}>Carregando…</span> : null}
           </div>
+
+          {top5BError ? <div style={{ fontSize: 12, color: 'crimson' }}>Erro: {String(top5BError?.message ?? top5BError)}</div> : null}
+
+          {abSummary ? (
+            <div style={{ border: '1px solid #eee', borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Resumo A → B</div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Entraram no Top 5 (B)</div>
+                  <div style={{ fontSize: 13 }}>{abSummary.entered.length ? abSummary.entered.join(', ') : '—'}</div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Saíram do Top 5 (A)</div>
+                  <div style={{ fontSize: 13 }}>{abSummary.exited.length ? abSummary.exited.join(', ') : '—'}</div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Maior alta (Δ IAP)</div>
+                  <div style={{ fontSize: 13 }}>
+                    {abSummary.bestUp ? `${abSummary.bestUp.name}: +${abSummary.bestUp.delta.toFixed(2)}` : '—'}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>Maior queda (Δ IAP)</div>
+                  <div style={{ fontSize: 13 }}>
+                    {abSummary.bestDown ? `${abSummary.bestDown.name}: ${abSummary.bestDown.delta.toFixed(2)}` : '—'}
+                  </div>
+                </div>
+              </div>
+
+              {abSummary.deltas?.length ? (
+                <div style={{ fontSize: 12, opacity: 0.8 }}>
+                  Observação: variações calculadas para clubes presentes nos dois rankings (Top 20 A e Top 20 B).
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
-        {/* The rest of compare UI retained from previous codebase if you want I can extract it to a separate component next */}
         <div style={{ fontSize: 12, opacity: 0.8 }}>
           Modo manual: selecione até 5 clubes para sobrepor as linhas no mesmo gráfico.
         </div>
@@ -519,14 +595,7 @@ export default function Ranking() {
 
         {compareAligned.datasets && compareAligned.datasets.length >= 1 ? (
           <div style={{ height: 420, width: '100%' }}>
-            {/* chart rendering */}
-            <Line data={{ labels: compareAligned.labels, datasets: compareAligned.datasets }} options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { legend: { display: true }, tooltip: { enabled: true } },
-              scales: { y: { beginAtZero: true } },
-              elements: { line: { tension: 0.25 } },
-            }} />
+            <Line data={{ labels: compareAligned.labels, datasets: compareAligned.datasets }} options={lineOptions} />
           </div>
         ) : (
           <div style={{ fontSize: 12, opacity: 0.8 }}>
