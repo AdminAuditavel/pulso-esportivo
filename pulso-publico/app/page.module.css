@@ -1,13 +1,12 @@
 :root{
   /* Paleta solicitada */
-  --c-1: #0fc3e8;
-  --c-2: #0194be;
-  --c-3: #e2d397;
-  --c-4: #255DAA;
-  --c-5: #f07e13;
-  --c-6: #FFFFFF;
-
-  --bg: var(--c-6);
+  --c-1: #000000;
+  --c-2: #1693a5;
+  --c-3: #d8d8c0;
+  --c-4: #f0f0d8;
+  --c-5: #FFFFFF;
+  
+  --bg: var(--c-5);
   --text: var(--c-4);
   --muted: #6b6b6b;
   --card: #FCE0D4;
