@@ -28,6 +28,9 @@ import {
   formatDateBR,
   buildAbSummary,
   NF,
+  MANUAL_PALETTE,
+  COLOR_A,
+  COLOR_B,
 } from '../lib/rankingUtils';
 
 // Chart.js registration
@@ -42,11 +45,6 @@ import {
   Legend,
 } from 'chart.js';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Legend);
-
-// palette constants (kept for charts)
-const MANUAL_PALETTE = ['#337d26', '#549d45', '#74be63', '#95de82', '#b6ffa0'];
-const COLOR_A = '#337d26';
-const COLOR_B = '#549d45';
 
 export default function Ranking() {
   /* ========== filtros / estados ========== */
