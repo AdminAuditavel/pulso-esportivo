@@ -1,10 +1,11 @@
 //pulso-publico/lib/rankingUtils.js
 
-export const MANUAL_PALETTE = ['#D2EEFA', '#A3D8F1', '#54A6E1', '#255DAA', '#DE525E', '#FCE0D4'];
-export const COLOR_A = '#255DAA';
-export const COLOR_B = '#D2EEFA';
-
 export const NF = new Intl.NumberFormat('pt-BR');
+
+// Palette / cores exportadas para uso em componentes
+export const MANUAL_PALETTE = ['#337d26', '#549d45', '#74be63', '#95de82', '#b6ffa0'];
+export const COLOR_A = '#337d26'; // cor A (Data A)
+export const COLOR_B = '#549d45'; // cor B (Data B)
 
 export function getClubName(item) {
   if (!item) return '—';
