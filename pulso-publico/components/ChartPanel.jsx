@@ -3,6 +3,7 @@
 import React from 'react';
 import { Bar } from 'react-chartjs-2';
 import LoadingChartPlaceholder from './LoadingChartPlaceholder';
+import { MANUAL_PALETTE } from '../lib/rankingUtils';
 
 /**
  * ChartPanel
@@ -11,9 +12,11 @@ import LoadingChartPlaceholder from './LoadingChartPlaceholder';
  *  - loading: boolean
  */
 export default function ChartPanel({ rows = [], loading = false }) {
+  const primary = MANUAL_PALETTE[0] ?? '#337d26';
+
   const barData = {
     labels: rows.map((r) => r.club),
-    datasets: [{ label: 'IAP', data: rows.map((r) => r.value), backgroundColor: '#243a69' }],
+    datasets: [{ label: 'IAP', data: rows.map((r) => r.value), backgroundColor: primary }],
   };
 
   const barOptions = {
