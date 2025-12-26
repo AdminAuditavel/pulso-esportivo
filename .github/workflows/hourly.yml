@@ -19,9 +19,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+           - name: Install dependencies
         run: |
           pip install -r pipeline/requirements.txt
+
+      - name: Debug SUPABASE env vars
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "SUPABASE_URL = ${SUPABASE_URL:+SET}"
+          echo "SUPABASE_SERVICE_ROLE_KEY = ${SUPABASE_SERVICE_ROLE_KEY:+SET}"
 
       - name: Run hourly collection
         env:
