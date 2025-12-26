@@ -4,6 +4,7 @@
 
 import { useMemo, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import useSWR from 'swr';
 import {
   Chart as ChartJS,
@@ -23,6 +24,7 @@ import MiniSparkline from './MiniSparkline';
 import Skeleton from './Skeleton';
 import LoadingChartPlaceholder from './LoadingChartPlaceholder';
 import btnStyles from './Button.module.css';
+import ctrlStyles from './controls.module.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Legend);
 
@@ -369,7 +371,13 @@ export default function Ranking() {
 
   return (
     <div style={{ display: 'grid', gap: 18 }}>
-      <h2 style={{ margin: 0 }}>Ranking Diário</h2>
+      {/* Header with logo linking to home */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Link href="/">
+          <Image src="/Logotipo_Comentaram.png" alt="Comentaram" width={140} height={36} priority />
+        </Link>
+        <h2 style={{ margin: 0 }}>Ranking Diário</h2>
+      </div>
 
       <div style={{ fontSize: 13, opacity: 0.85 }}>
         Exibindo: <strong>{formatDateBR(effectiveDate)}</strong>
@@ -402,6 +410,7 @@ export default function Ranking() {
             const d = e.target.value;
             setSelectedDate(d);
           }}
+          className={ctrlStyles.dateInput}
         />
         <button
           className={btnStyles.btn}
@@ -671,7 +680,7 @@ export default function Ranking() {
             </div>
 
             <label style={{ fontSize: 12 }}>Data B:</label>
-            <input type="date" value={compareDateB} onChange={(e) => { setCompareDateB(e.target.value); setTop5BError(null); }} />
+            <input type="date" value={compareDateB} onChange={(e) => { setCompareDateB(e.target.value); setTop5BError(null); }} className={ctrlStyles.dateInput} />
 
             <div style={{ fontSize: 12 }}>
               cor B: <span style={{ color: COLOR_B }}>laranja</span>
