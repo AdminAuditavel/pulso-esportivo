@@ -46,15 +46,26 @@ import {
 } from 'chart.js';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Legend);
 
+/* Helper para exibir só dia/mês: "22/12" */
+function formatDayMonth(yyyyMMdd) {
+  if (!yyyyMMdd) return '';
+  const s = String(yyyyMMdd).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return s;
+  return `${m[3]}/${m[2]}`;
+}
+
 /**
- * Ranking (com ajustes de paleta e alinhamento de datas no compare A vs B)
+ * Ranking atualizado:
+ * - conecta linhas no compare A vs B (spanGaps: true) para evitar pontos isolados sem segmento
+ * - exibe X axis como DD/MM e tooltip com DD/MM/AAAA
+ * - mostra swatches de cor para Data A / Data B
  */
 export default function Ranking() {
   /* ========== filtros / estados ========== */
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedClub, setSelectedClub] = useState('');
 
-  // requested/resolved date display
   const [resolvedDate, setResolvedDate] = useState('');
   const [requestedDate, setRequestedDate] = useState('');
 
@@ -143,7 +154,7 @@ export default function Ranking() {
         try { prevFetchCtrlRef.current.abort(); } catch {}
       }
       const ctrl = new AbortController();
-      prevFetchCtrlRef.current = ctrl;
+      prevFetchCtrlRefRef: prevFetchCtrlRef.current = ctrl;
 
       setPrevDateUsed(p);
       setPrevLoading(true);
@@ -252,7 +263,7 @@ export default function Ranking() {
         for (const label of need) {
           if (ctrl.signal.aborted) throw new Error('Abortado');
           const realName = label.replace(/\s*\((A|B)\)\s*$/, '');
-          const res = await fetch(`/api/club_series?club=${encodeURIComponent(realName)}&limit_days=180`, { signal: ctrl.signal });
+          const res = await fetch(`/api/club_series?club=${encodeURIComponent(realName)}&limit_days=365`, { signal: ctrl.signal });
           if (!res.ok) throw new Error(`Falha ao buscar série: ${label}`);
           const json = await res.json();
           updates[label] = normalizeSeries(json);
@@ -272,10 +283,10 @@ export default function Ranking() {
       try { ctrl.abort(); } catch {}
       compareFetchCtrlRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compareSelected]);
 
   // Alinha séries em labels diárias entre min e max (preenche com null quando não há valor)
+  // Agora usa spanGaps: true para conectar a linha entre pontos (caso prefira gaps, mude para false)
   const compareAligned = useMemo(() => {
     const selected = compareSelected.filter((label) => compareMap[label]);
     if (selected.length === 0) return { labels: [], datasets: [] };
@@ -326,27 +337,39 @@ export default function Ranking() {
         pointRadius: 2,
         pointHoverRadius: 4,
         borderWidth: 2,
-        spanGaps: false, // keep gaps when data is null
+        spanGaps: true, // conecta linha mesmo quando existem valores nulos entre pontos
       };
     });
 
     return { labels, datasets };
   }, [compareSelected, compareMap]);
 
-  // opções do chart com formatação de ticks (DD/MM/YYYY)
+  // opções do chart com formatação de ticks (DD/MM) e tooltip com DD/MM/AAAA
   const lineOptions = useMemo(() => {
     return {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: true }, tooltip: { enabled: true } },
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          enabled: true,
+          callbacks: {
+            title: function (tooltipItems) {
+              if (!tooltipItems || tooltipItems.length === 0) return '';
+              const label = tooltipItems[0].label;
+              return formatDateBR(String(label).slice(0, 10)); // full DD/MM/YYYY in tooltip
+            },
+          },
+        },
+      },
       scales: {
         x: {
           ticks: {
             callback: function (val) {
+              // this.getLabelForValue retorna o label (YYYY-MM-DD)
               try {
-                // this.getLabelForValue é usado quando axis é category
                 const label = (typeof this.getLabelForValue === 'function') ? this.getLabelForValue(val) : val;
-                return formatDateBR(String(label).slice(0, 10));
+                return formatDayMonth(String(label).slice(0, 10)); // "22/12"
               } catch {
                 return String(val);
               }
@@ -358,10 +381,9 @@ export default function Ranking() {
         },
         y: { beginAtZero: true },
       },
-      elements: { line: { tension: 0.25 } },
+      elements: { line: { tension: 0.12 } },
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [/* intentionally no deps beyond imports */]);
+  }, []);
 
   /* ========== render guards ========== */
   if (rankingLoading) return <div className={ctrlStyles.container}>Carregando ranking…</div>;
@@ -476,16 +498,18 @@ export default function Ranking() {
         <section className={ctrlStyles.topicCard} style={{ marginTop: 12 }}>
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Comparar clubes — evolução do IAP</div>
 
-          {/* Reuse the same comparison JSX (kept behavior) */}
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ fontSize: 12, opacity: 0.8 }}>
               Top 5 vs Top 5: compara o Top 5 do ranking exibido (Data A) com o Top 5 de uma segunda data (Data B).
             </div>
 
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 12 }}>
-                Data A: <strong>{formatDateBR(effectiveDate)}</strong>
-                <span style={{ marginLeft: 8 }}>(cor A: <span style={{ color: COLOR_A, fontWeight: 700 }}>{COLOR_A}</span>)</span>
+              <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 14, height: 12, display: 'inline-block', background: COLOR_A, borderRadius: 2, border: '1px solid rgba(0,0,0,0.06)' }} />
+                  <strong>Data A</strong>
+                </div>
+                <span style={{ marginLeft: 8, opacity: 0.9 }}>{COLOR_A}</span>
               </div>
 
               <label style={{ fontSize: 12 }}>Data B:</label>
@@ -496,8 +520,10 @@ export default function Ranking() {
                 className={ctrlStyles.dateInput}
               />
 
-              <div style={{ fontSize: 12 }}>
-                cor B: <span style={{ color: COLOR_B, fontWeight: 700 }}>{COLOR_B}</span>
+              <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ width: 14, height: 12, display: 'inline-block', background: COLOR_B, borderRadius: 2, border: '1px solid rgba(0,0,0,0.06)' }} />
+                <strong>Data B</strong>
+                <span style={{ marginLeft: 8, opacity: 0.9 }}>{COLOR_B}</span>
               </div>
 
               <button
@@ -631,6 +657,13 @@ export default function Ranking() {
             </div>
           )}
         </section>
+
+        {/* Nota explicativa sobre datas */}
+        <div style={{ marginTop: 12, fontSize: 12, color: 'var(--muted)' }}>
+          Observação: o gráfico mostra as datas disponíveis nas séries que foram carregadas para os clubes selecionados.
+          Se não aparecem pontos após 23/12, significa que as séries retornadas pela API não têm valores depois dessa data.
+          Para exibir mais histórico, aumente o parâmetro de busca das séries (por exemplo <code>?limit_days=365</code>) ou confirme que a API/DB contém dados posteriores.
+        </div>
       </main>
     </div>
   );
