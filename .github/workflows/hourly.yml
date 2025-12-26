@@ -8,6 +8,7 @@ on:
 jobs:
   hourly:
     runs-on: ubuntu-latest
+    environment: Production – pulso-publico
 
     steps:
       - name: Checkout repository
