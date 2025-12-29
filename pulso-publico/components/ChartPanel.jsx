@@ -47,14 +47,12 @@ export default function ChartPanel({
 
         const rankPos = Number(rawItem?.rank_position) || idx + 1;
 
-        // CHAVE ESTÁVEL: club_id primeiro
         const key =
           (rawItem?.club_id ? String(rawItem.club_id) : null) ||
           (r?.__club_key ? String(r.__club_key) : null) ||
           (rawItem?.__club_key ? String(rawItem.__club_key) : null) ||
           normalizeClubKey(club);
 
-        // ---- try prevRankMap first (preferred) ----
         let prevRank = null;
         if (prevRankMap && typeof prevRankMap.get === 'function') {
           const prRaw =
@@ -65,7 +63,6 @@ export default function ChartPanel({
           prevRank = pr !== null ? pr : null;
         }
 
-        // ---- fallback: prevMetricsMap may contain rank in payload ----
         if ((prevRank === null || prevRank === undefined) && prevMetricsMap && typeof prevMetricsMap.get === 'function') {
           const pm =
             prevMetricsMap.get(key) ??
@@ -269,9 +266,11 @@ export default function ChartPanel({
   };
 
   return (
-    <div style={{ height, width: '100%' }}>
+    // adiciona paddingBottom para garantir espaço visual e evitar sobreposição do próximo card
+    <div style={{ height, width: '100%', paddingBottom: 20 }}>
       <Bar data={barData} options={barOptions} plugins={[labelsPlugin]} />
-      <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
+      {/* garante que essa mensagem fique acima de outros elementos visuais */}
+      <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8, position: 'relative', zIndex: 2 }}>
         {prevDateUsed ? `Comparação: vs ${prevDateUsed}.` : 'Sem comparação (sem dia anterior).'} Passe o mouse/toque nas barras para detalhes.
       </div>
     </div>
