@@ -133,17 +133,72 @@ export default function ChartPanel({
       for (let i = 0; i < meta.data.length; i += 1) {
         const bar = meta.data[i];
 
-        // pega dataIndex conforme Chart.js (fallback para i)
-        const dataIndex = (bar && (bar.index ?? bar.dataIndex ?? bar._index)) ?? i;
+        // candidates de índices que podem representar o dataIndex real
+        const candidateIndices = [];
+        if (bar) {
+          // propriedades comuns em diferentes versões/shapes
+          candidateIndices.push(bar.index ?? bar.dataIndex ?? bar._index);
+        }
+        candidateIndices.push(i); // fallback manual
 
-        // garante label conforme chart.data.labels (isso é o que tooltip usa)
-        const labelFromChart = chart.data.labels && chart.data.labels[dataIndex];
-        // encontra o objecto em `clean` que tem o mesmo nome (garante alinhamento)
-        const idxClean = clean.findIndex((c) => c.club === labelFromChart);
-        if (idxClean === -1) continue;
-        const row = clean[idxClean];
-        const value = dataset.data[dataIndex];
+        // também tente o índice invertido (Chart.js às vezes inverte ordem)
+        const rev = (idx) => (typeof idx === 'number' ? (clean.length - 1 - idx) : null);
+        candidateIndices.push(...candidateIndices.map(rev));
 
+        // inclui label e valor vindos do chart para ajudar busca
+        const chartLabelAtI = chart.data.labels && chart.data.labels[i];
+        const chartValueAtI = dataset.data && dataset.data[i];
+
+        // remove duplicatas e falsy
+        const uniqCandidates = Array.from(new Set(candidateIndices.filter((c) => c !== undefined && c !== null && Number.isInteger(c))));
+
+        // função para pegar row a partir de um índice candidato
+        let row = null;
+        let usedIndex = null;
+        for (const cand of uniqCandidates) {
+          const c = Number(cand);
+          if (c >= 0 && c < clean.length) {
+            const candidateRow = clean[c];
+            // se o chartLabel existir, dê preferência a match por nome
+            if (chartLabelAtI && candidateRow && candidateRow.club === chartLabelAtI) {
+              row = candidateRow;
+              usedIndex = c;
+              break;
+            }
+            // se valor bater e clube também for provável, aceitamos
+            if (typeof chartValueAtI !== 'undefined' && candidateRow && Number(candidateRow.value) === Number(chartValueAtI)) {
+              row = candidateRow;
+              usedIndex = c;
+              break;
+            }
+            // último recurso: se existe candidateRow use-o (assume mapeamento direto)
+            if (candidateRow) {
+              row = candidateRow;
+              usedIndex = c;
+              break;
+            }
+          }
+        }
+
+        // Se ainda não achou, tente localizar por labelFromChart usando chart.data.labels[dataIndex]
+        if (!row) {
+          const dataIndexFromBar = (bar && (bar.index ?? bar.dataIndex ?? bar._index)) ?? i;
+          const labelFromChart = chart.data.labels && chart.data.labels[dataIndexFromBar];
+          if (labelFromChart) {
+            const idxClean = clean.findIndex((c) => c.club === labelFromChart);
+            if (idxClean !== -1) {
+              row = clean[idxClean];
+              usedIndex = idxClean;
+            }
+          }
+        }
+
+        if (!row) {
+          // não encontrou: pula este elemento
+          continue;
+        }
+
+        // pega props do bar (compat)
         const props =
           typeof bar.getProps === 'function'
             ? bar.getProps(['x', 'y', 'base', 'width', 'height'], true)
@@ -163,6 +218,7 @@ export default function ChartPanel({
 
         if (prevDateUsed) {
           if (row.rankDelta === null || row.rankDelta === undefined) {
+            // ainda sem rankDelta: deixar traço (poderíamos tentar fallback por IAP aqui)
             trendText = '—';
           } else if (row.rankDelta > 0) {
             trendText = `↑ ${row.rankDelta}`;
@@ -214,7 +270,7 @@ export default function ChartPanel({
         ctx.font = valueFont;
         ctx.fillStyle = 'rgba(0,0,0,0.78)';
         ctx.textAlign = 'left';
-        ctx.fillText(fmt2(value), outX, yMid);
+        ctx.fillText(fmt2(dataset.data[usedIndex ?? i]), outX, yMid);
       }
 
       ctx.restore();
@@ -226,6 +282,7 @@ export default function ChartPanel({
     responsive: true,
     maintainAspectRatio: false,
     layout: {
+      // espaço à esquerda para o ↑/↓ e à direita para o valor
       padding: { left: 44, right: 46 },
     },
     plugins: {
