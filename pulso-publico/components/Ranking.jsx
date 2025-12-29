@@ -773,7 +773,11 @@ export default function Ranking() {
 
         {/* Top Movers */}
         <section className={ctrlStyles.topicCard} style={{ marginTop: 12 }}>
-          <TopMovers tableItems={tableItems} prevRankMap={prevRankMap} prevDateUsed={prevDateUsed} />
+          <TopMovers
+            tableItems={tableItems}
+            prevMetricsMap={prevMetricsMap}
+            prevDateUsed={prevDateUsed}
+          />
         </section>
 
         {/* Chart */}
