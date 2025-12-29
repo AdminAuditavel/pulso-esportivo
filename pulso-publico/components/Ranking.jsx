@@ -792,14 +792,16 @@ export default function Ranking() {
 
         {/* Comparação (card) */}
         <section className={ctrlStyles.topicCard} style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Comparar clubes — evolução do IAP</div>
-
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
+            Comparar clubes — evolução do IAP
+          </div>
+        
+          <div style={{ display: 'grid', gap: 10 }}>
             <div style={{ fontSize: 12, opacity: 0.8 }}>
               Top 5 vs Top 5: compara o Top 5 do ranking exibido (Data A) com o Top 5 de uma segunda data (Data B).
             </div>
-
-           {/* DATA A + DATA B (somente leitura, com as datas ao lado dos quadrados) */}
+        
+            {/* Badges: Data A e Data B com datas ao lado do quadrado */}
             <div style={{ fontSize: 12, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span
@@ -812,11 +814,9 @@ export default function Ranking() {
                     border: '1px solid rgba(0,0,0,0.06)',
                   }}
                 />
-                <strong>
-                  Data A {effectiveDate ? formatDateBR(effectiveDate) : '—'}
-                </strong>
+                <strong>Data A {effectiveDate ? formatDateBR(effectiveDate) : '—'}</strong>
               </div>
-            
+        
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span
                   style={{
@@ -828,13 +828,11 @@ export default function Ranking() {
                     border: '1px solid rgba(0,0,0,0.06)',
                   }}
                 />
-                <strong>
-                  Data B {compareDateB ? formatDateBR(compareDateB) : '—'}
-                </strong>
+                <strong>Data B {compareDateB ? formatDateBR(compareDateB) : '—'}</strong>
               </div>
             </div>
-            
-            {/* CONTROLE para selecionar Data B */}
+        
+            {/* Controles: selecionar Data B + botão */}
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <label style={{ fontSize: 12 }}>Selecionar Data B:</label>
               <input
@@ -846,36 +844,34 @@ export default function Ranking() {
                 }}
                 className={ctrlStyles.dateInput}
               />
-            
-              {/* o botão "Carregar Top 5 A + B" continua exatamente como está abaixo */}
-            </div>
+        
               <button
                 className={btnStyles.btn}
                 onClick={async () => {
                   setTop5BError(null);
                   setTop5BLoading(true);
-
+        
                   try {
                     if (!compareDateB) throw new Error('Selecione a Data B.');
-
+        
                     // Normaliza A (tableItems) e B (API) para buildAbSummary enxergar nomes + iap
                     const aItemsRaw = Array.isArray(tableItems) ? tableItems : [];
                     const aItems = aItemsRaw.map((it) => withCompatFields(it, pickIapNumber(it)));
-
+        
                     const resB = await fetch(`/api/daily_ranking?date=${encodeURIComponent(compareDateB)}`);
                     if (!resB.ok) throw new Error(`Falha ao buscar ranking da Data B (${resB.status})`);
-
+        
                     const bJson = await resB.json();
                     const bRaw = Array.isArray(bJson) ? bJson : Array.isArray(bJson?.data) ? bJson.data : [];
                     const bItems = bRaw.map((it) => withCompatFields(it, pickIapNumber(it)));
-
+        
                     setAbSummary(buildAbSummary(aItems.slice(0, 20), bItems.slice(0, 20)));
-
+        
                     const topA = aItems.map((it) => getClubName(it)).filter((n) => n && n !== '—').slice(0, 5);
                     const topB = bItems.map((it) => getClubName(it)).filter((n) => n && n !== '—').slice(0, 5);
-
+        
                     const merged = [...topA.map((n) => `${n} (A)`), ...topB.map((n) => `${n} (B)`)];
-
+        
                     setCompareError(null);
                     setCompareSelected(merged);
                   } catch (e) {
@@ -889,32 +885,49 @@ export default function Ranking() {
               >
                 Carregar Top 5 A + B
               </button>
-
+        
               {top5BLoading ? <span style={{ fontSize: 12, opacity: 0.75 }}>Carregando…</span> : null}
             </div>
-
-            {top5BError ? <div style={{ fontSize: 12, color: 'crimson' }}>Erro: {String(top5BError?.message ?? top5BError)}</div> : null}
-
+        
+            {top5BError ? (
+              <div style={{ fontSize: 12, color: 'crimson' }}>
+                Erro: {String(top5BError?.message ?? top5BError)}
+              </div>
+            ) : null}
+        
             {abSummary ? (
               <div style={{ border: '1px solid rgba(0,0,0,0.04)', borderRadius: 8, padding: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>
-                  Resumo A → B
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginTop: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Resumo A → B</div>
+        
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: 10,
+                    marginTop: 8,
+                  }}
+                >
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>Entraram no Top 5 (B)</div>
-                    <div style={{ fontSize: 13 }}>{abSummary.entered?.length ? abSummary.entered.join(', ') : 'Nenhuma mudança'}</div>
+                    <div style={{ fontSize: 13 }}>
+                      {abSummary.entered?.length ? abSummary.entered.join(', ') : 'Nenhuma mudança'}
+                    </div>
                   </div>
+        
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>Saíram do Top 5 (A)</div>
-                    <div style={{ fontSize: 13 }}>{abSummary.exited?.length ? abSummary.exited.join(', ') : 'Nenhuma mudança'}</div>
+                    <div style={{ fontSize: 13 }}>
+                      {abSummary.exited?.length ? abSummary.exited.join(', ') : 'Nenhuma mudança'}
+                    </div>
                   </div>
+        
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>Maior alta (Δ IAP)</div>
                     <div style={{ fontSize: 13 }}>
                       {abSummary.bestUp ? `${abSummary.bestUp.name}: +${abSummary.bestUp.delta.toFixed(2)}` : '—'}
                     </div>
                   </div>
+        
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>Maior queda (Δ IAP)</div>
                     <div style={{ fontSize: 13 }}>
@@ -924,24 +937,31 @@ export default function Ranking() {
                 </div>
               </div>
             ) : null}
-
-            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 10 }}>
+        
+            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
               Modo manual: selecione até 5 clubes para sobrepor as linhas no mesmo gráfico.
             </div>
-
+        
             {clubsLoading ? (
               <div>Carregando clubes…</div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginTop: 8 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: 8,
+                  marginTop: 8,
+                }}
+              >
                 {clubs.map((c) => {
                   const name = c?.label;
                   if (!name) return null;
-
+        
                   const checked = compareSelected.includes(name);
                   const hasAB = compareSelected.some((x) => /\((A|B)\)\s*$/.test(String(x)));
                   const limit = hasAB ? 10 : 5;
                   const disabled = !checked && compareSelected.length >= limit;
-
+        
                   return (
                     <label key={name} style={{ display: 'flex', gap: 8, alignItems: 'center', opacity: disabled ? 0.6 : 1 }}>
                       <input
@@ -959,12 +979,14 @@ export default function Ranking() {
                 })}
               </div>
             )}
-
+        
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
               <div style={{ fontSize: 12, opacity: 0.8 }}>
-                Selecionados: <strong>{compareSelected.length}</strong>/{compareSelected.some((x) => /\((A|B)\)\s*$/.test(String(x))) ? 10 : 5}
+                Selecionados:{' '}
+                <strong>{compareSelected.length}</strong>/
+                {compareSelected.some((x) => /\((A|B)\)\s*$/.test(String(x))) ? 10 : 5}
               </div>
-
+        
               <button
                 className={btnStyles.btn}
                 onClick={() => {
@@ -976,7 +998,7 @@ export default function Ranking() {
               >
                 Top 5 do dia
               </button>
-
+        
               <button
                 className={btnStyles.btn}
                 onClick={() => {
@@ -987,16 +1009,16 @@ export default function Ranking() {
               >
                 Limpar seleção
               </button>
-
+        
               {compareBusy ? <span style={{ fontSize: 12, opacity: 0.75 }}>Carregando séries…</span> : null}
             </div>
-
+        
             {compareError ? (
               <div style={{ fontSize: 13, marginTop: 8 }}>
                 Erro ao carregar comparação: {String(compareError?.message ?? compareError)}
               </div>
             ) : null}
-
+        
             {compareAligned.datasets && compareAligned.datasets.length >= 1 ? (
               <div style={{ height: 420, width: '100%', marginTop: 12 }}>
                 <Line data={{ labels: compareAligned.labels, datasets: compareAligned.datasets }} options={lineOptions} />
