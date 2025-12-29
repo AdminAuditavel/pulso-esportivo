@@ -799,35 +799,56 @@ export default function Ranking() {
               Top 5 vs Top 5: compara o Top 5 do ranking exibido (Data A) com o Top 5 de uma segunda data (Data B).
             </div>
 
-           <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span
-              style={{
-                width: 14,
-                height: 12,
-                display: 'inline-block',
-                background: COLOR_A,
-                borderRadius: 2,
-                border: '1px solid rgba(0,0,0,0.06)',
-              }}
-            />
-            <strong>
-              Data A {effectiveDate ? formatDateBR(effectiveDate) : '—'}
-            </strong>
-          </div>
-
-              <label style={{ fontSize: 12 }}>Data B:</label>
+           {/* DATA A + DATA B (somente leitura, com as datas ao lado dos quadrados) */}
+            <div style={{ fontSize: 12, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span
+                  style={{
+                    width: 14,
+                    height: 12,
+                    display: 'inline-block',
+                    background: COLOR_A,
+                    borderRadius: 2,
+                    border: '1px solid rgba(0,0,0,0.06)',
+                  }}
+                />
+                <strong>
+                  Data A {effectiveDate ? formatDateBR(effectiveDate) : '—'}
+                </strong>
+              </div>
+            
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span
+                  style={{
+                    width: 14,
+                    height: 12,
+                    display: 'inline-block',
+                    background: COLOR_B,
+                    borderRadius: 2,
+                    border: '1px solid rgba(0,0,0,0.06)',
+                  }}
+                />
+                <strong>
+                  Data B {compareDateB ? formatDateBR(compareDateB) : '—'}
+                </strong>
+              </div>
+            </div>
+            
+            {/* CONTROLE para selecionar Data B */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 12 }}>Selecionar Data B:</label>
               <input
                 type="date"
                 value={compareDateB}
-                onChange={(e) => { setCompareDateB(e.target.value); setTop5BError(null); }}
+                onChange={(e) => {
+                  setCompareDateB(e.target.value);
+                  setTop5BError(null);
+                }}
                 className={ctrlStyles.dateInput}
               />
-
-              <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ width: 14, height: 12, display: 'inline-block', background: COLOR_B, borderRadius: 2, border: '1px solid rgba(0,0,0,0.06)' }} />
-                <strong>Data B</strong>
-              </div>
-
+            
+              {/* o botão "Carregar Top 5 A + B" continua exatamente como está abaixo */}
+            </div>
               <button
                 className={btnStyles.btn}
                 onClick={async () => {
