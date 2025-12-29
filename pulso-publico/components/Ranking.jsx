@@ -1,4 +1,4 @@
-//pulso-publico/components/Ranking.jsx
+// /pulso-publico/components/Ranking.jsx
 'use client';
 
 import { useMemo, useState, useEffect, useRef } from 'react';
@@ -70,23 +70,25 @@ function clubKeyFromItem(item) {
 }
 
 /* ========= Extração numérica coerente ========= */
-  function pickIapNumber(item) {
-    // Seu ranking diário usa "value" como IAP
-    const raw =
-      item?.value ??
-      item?._computed_value ??
-      item?.iap_score ??
-      item?.score ??
-      item?.iap ??
-      null;
-  
-    return toNumber(raw);
-  }
+function pickIapNumber(item) {
+  // Seu ranking diário usa "value" como IAP
+  const raw =
+    item?.value ??
+    item?._computed_value ??
+    item?.iap_score ??
+    item?.score ??
+    item?.iap ??
+    null;
 
-/* ========= Força compatibilidade: nome e métricas em campos comuns ========= */
+  return toNumber(raw);
+}
+
+/* ========= Força compatibilidade: nome e métricas em campos comuns =========
+   CORREÇÃO: chave canônica = club_id (quando existir), senão nome normalizado.
+*/
 function withCompatFields(item, computedValueOrNull) {
-  const display = getClubName(it);
-const key = it?.club_id ? String(it.club_id) : normalizeClubKey(display);
+  const displayName = getClubName(item);
+  const key = item?.club_id ? String(item.club_id) : normalizeClubKey(displayName);
 
   const computed =
     computedValueOrNull !== undefined ? computedValueOrNull : pickIapNumber(item);
@@ -172,7 +174,9 @@ export default function Ranking() {
   }, [resolvedDate, selectedDate, data]);
 
   /* ========== aggregate / deduplicate clubs into a ranked list ==========
-     Agora dedupe por __club_key (normalizado), para casar com o prev-day.
+     CORREÇÃO: dedupe por chave canônica:
+       - club_id quando existir
+       - senão nome normalizado
   */
   const rankedData = useMemo(() => {
     if (!Array.isArray(data) || data.length === 0) return [];
@@ -183,7 +187,8 @@ export default function Ranking() {
     for (let i = 0; i < data.length; i += 1) {
       const item = data[i];
       const display = getClubName(item);
-      const key = normalizeClubKey(display);
+
+      const key = item?.club_id ? String(item.club_id) : normalizeClubKey(display);
 
       if (!display || display === '—' || !key) continue;
 
@@ -239,25 +244,26 @@ export default function Ranking() {
 
     return arr.map((r) => {
       const item = { ...r.rawItem };
-    
+
       // garante rank_position numérico
       item.rank_position = r.rank_position;
-    
+
       const computed = r.value === undefined ? null : r.value;
-    
+
       // injeta compat + chave para join
       const out = withCompatFields(item, computed);
-      out.__club_key = r.key;
-    
+
+      // chave canônica para JOIN:
+      // - se existe club_id no item, use ele
+      // - senão, usa a key do agregador (já normalizada)
+      out.__club_key = item?.club_id ? String(item.club_id) : r.key;
+
       // reforça display “original”
       out.club = r.display;
       out.label = r.display;
       out.name = r.display;
-    
+
       // ========= NORMALIZAÇÃO CRÍTICA =========
-      // seu ranking diário usa "value" como IAP
-      // e vários componentes leem score / iap / iap_score.
-      // então garantimos aqui, sem depender do withCompatFields.
       if (computed !== null && computed !== undefined) {
         out._computed_value = computed;
         out.value = computed;
@@ -266,7 +272,7 @@ export default function Ranking() {
         out.iap_score = computed;
       }
       // =======================================
-    
+
       return out;
     });
   }, [data]);
@@ -291,12 +297,14 @@ export default function Ranking() {
           key: clubKeyFromItem(it),
           raw: it?.iap_score ?? it?.score ?? it?.iap ?? it?.value ?? null,
           parsed: pickIapNumber(it),
+          club_id: it?.club_id ?? null,
         }))
       : [];
     const rankedSample = Array.isArray(rankedData)
       ? rankedData.slice(0, 6).map((it) => ({
           club: getClubName(it),
           key: it.__club_key,
+          club_id: it?.club_id ?? null,
           iap_score: it.iap_score,
           score: it.score,
           _computed_value: it._computed_value,
@@ -328,12 +336,17 @@ export default function Ranking() {
   }, [rankedData]);
 
   // rows para ChartPanel (coloca aliases para maximizar compatibilidade)
+  // CORREÇÃO: __club_key canônica (club_id quando existir)
   const baseRows = useMemo(() => {
     if (!Array.isArray(rankedData)) return [];
     return rankedData
       .map((item) => {
         const club = getClubName(item);
-        const key = item.__club_key || normalizeClubKey(club);
+
+        const key =
+          (item?.club_id ? String(item.club_id) : null) ||
+          item.__club_key ||
+          normalizeClubKey(club);
 
         let value = toNumber(item?._computed_value);
         if (value === null) value = pickIapNumber(item);
@@ -367,10 +380,10 @@ export default function Ranking() {
   }, [selectedClub, rows, rankedData]);
 
   /* ========== prev-day (trend + deltas) ==========
-     IMPORTANTÍSSIMO: keys normalizadas para casar com rankedData.
+     CORREÇÃO: indexa prevRankMap/prevMetricsMap também por club_id (além do nome).
   */
   const prevFetchCtrlRef = useRef(null);
-  const [prevRankMap, setPrevRankMap] = useState(new Map());      // key -> rank
+  const [prevRankMap, setPrevRankMap] = useState(new Map()); // key -> rank
   const [prevMetricsMap, setPrevMetricsMap] = useState(new Map()); // key -> {rank, score, volume, sent}
   const [prevDateUsed, setPrevDateUsed] = useState('');
   const [prevLoading, setPrevLoading] = useState(false);
@@ -378,7 +391,7 @@ export default function Ranking() {
 
   useEffect(() => {
     let cancelled = false;
-  
+
     async function fetchPrevRanking() {
       if (!effectiveDate) {
         setPrevDateUsed('');
@@ -386,7 +399,7 @@ export default function Ranking() {
         setPrevMetricsMap(new Map());
         return;
       }
-  
+
       const p = prevDay(effectiveDate);
       if (!p) {
         setPrevDateUsed('');
@@ -394,22 +407,22 @@ export default function Ranking() {
         setPrevMetricsMap(new Map());
         return;
       }
-  
+
       if (prevFetchCtrlRef.current) {
         try { prevFetchCtrlRef.current.abort(); } catch {}
       }
       const ctrl = new AbortController();
       prevFetchCtrlRef.current = ctrl;
-  
+
       setPrevDateUsed(p);
       setPrevLoading(true);
       setPrevError(null);
-  
+
       try {
         const res = await fetch(`/api/daily_ranking?date=${encodeURIComponent(p)}`, {
           signal: ctrl.signal,
         });
-  
+
         if (!res.ok) {
           if (!cancelled) {
             setPrevRankMap(new Map());
@@ -417,48 +430,52 @@ export default function Ranking() {
           }
           return;
         }
-  
+
         const json = await res.json();
         const arr = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
-  
+
         const rm = new Map();
         const mm = new Map();
-  
+
         for (let i = 0; i < arr.length; i += 1) {
           const it = arr[i];
-  
+
           const display = getClubName(it);
-          const key = normalizeClubKey(display);
-  
+          const norm = normalizeClubKey(display);
+          const cid = it?.club_id ? String(it.club_id) : '';
+
+          const key = cid || norm;
+
           if (!display || display === '—' || !key) continue;
-  
+
           const rp = toNumber(it?.rank_position);
           const rankPos = rp !== null ? rp : i + 1;
-  
+
           const score = pickIapNumber(it);
           const volume = toNumber(it?.volume_total);
           const sent = toNumber(it?.sentiment_score);
-  
-          // rank: duas chaves (display + normalizada)
-          rm.set(display, rankPos);
-          rm.set(key, rankPos);
-  
-          // metrics: payload compat (score/iap/iap_score/value) + duas chaves
+
           const payload = {
             rank: rankPos,
             score,
             iap: score,
             iap_score: score,
             value: score,
-  
             volume,
             sent,
           };
-  
+
+          // rank: 3 chaves
+          rm.set(display, rankPos);
+          rm.set(norm, rankPos);
+          if (cid) rm.set(cid, rankPos);
+
+          // metrics: 3 chaves
           mm.set(display, payload);
-          mm.set(key, payload);
+          mm.set(norm, payload);
+          if (cid) mm.set(cid, payload);
         }
-  
+
         if (!cancelled) {
           setPrevRankMap(rm);
           setPrevMetricsMap(mm);
@@ -474,9 +491,9 @@ export default function Ranking() {
         prevFetchCtrlRef.current = null;
       }
     }
-  
+
     fetchPrevRanking();
-  
+
     return () => {
       cancelled = true;
       if (prevFetchCtrlRef.current) {
@@ -487,20 +504,25 @@ export default function Ranking() {
 
   function renderTrend(item, idx) {
     const currRank = toNumber(item?.rank_position) !== null ? toNumber(item?.rank_position) : idx + 1;
-  
+
     const display = getClubName(item);
-    const key = item?.__club_key || normalizeClubKey(display);
-  
+
+    const key =
+      (item?.club_id ? String(item.club_id) : null) ||
+      item?.__club_key ||
+      normalizeClubKey(display);
+
     const prevRank =
+      prevRankMap.get(key) ??
       prevRankMap.get(display) ??
-      prevRankMap.get(key);
-  
+      prevRankMap.get(normalizeClubKey(display));
+
     if (!prevDateUsed || prevRank === undefined || prevRank === null || !currRank) {
       return <span style={{ opacity: 0.7 }}>—</span>;
     }
-  
+
     const delta = prevRank - currRank;
-  
+
     if (delta > 0) return <TrendBadge direction="up" value={delta} />;
     if (delta < 0) return <TrendBadge direction="down" value={Math.abs(delta)} />;
     return <TrendBadge direction="flat" value={0} />;
@@ -799,12 +821,12 @@ export default function Ranking() {
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
             Comparar clubes — evolução do IAP
           </div>
-        
+
           <div style={{ display: 'grid', gap: 10 }}>
             <div style={{ fontSize: 12, opacity: 0.8 }}>
               Top 5 vs Top 5: compara o Top 5 do ranking exibido (Data A) com o Top 5 de uma segunda data (Data B).
             </div>
-        
+
             {/* Linha única: Data A / Data B / seletor / botão */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               {/* Data A */}
@@ -821,7 +843,7 @@ export default function Ranking() {
                 />
                 <strong>Data A {effectiveDate ? formatDateBR(effectiveDate) : '—'}</strong>
               </div>
-            
+
               {/* Data B */}
               <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span
@@ -836,7 +858,7 @@ export default function Ranking() {
                 />
                 <strong>Data B {compareDateB ? formatDateBR(compareDateB) : '—'}</strong>
               </div>
-            
+
               {/* Seletor Data B */}
               <label style={{ fontSize: 12, marginLeft: 6 }}>Selecionar Data B:</label>
               <input
@@ -848,35 +870,35 @@ export default function Ranking() {
                 }}
                 className={ctrlStyles.dateInput}
               />
-            
+
               {/* Botão */}
               <button
                 className={btnStyles.btn}
                 onClick={async () => {
                   setTop5BError(null);
                   setTop5BLoading(true);
-            
+
                   try {
                     if (!compareDateB) throw new Error('Selecione a Data B.');
-            
+
                     // Normaliza A (tableItems) e B (API) para buildAbSummary enxergar nomes + iap
                     const aItemsRaw = Array.isArray(tableItems) ? tableItems : [];
                     const aItems = aItemsRaw.map((it) => withCompatFields(it, pickIapNumber(it)));
-            
+
                     const resB = await fetch(`/api/daily_ranking?date=${encodeURIComponent(compareDateB)}`);
                     if (!resB.ok) throw new Error(`Falha ao buscar ranking da Data B (${resB.status})`);
-            
+
                     const bJson = await resB.json();
                     const bRaw = Array.isArray(bJson) ? bJson : Array.isArray(bJson?.data) ? bJson.data : [];
                     const bItems = bRaw.map((it) => withCompatFields(it, pickIapNumber(it)));
-            
+
                     setAbSummary(buildAbSummary(aItems.slice(0, 20), bItems.slice(0, 20)));
-            
+
                     const topA = aItems.map((it) => getClubName(it)).filter((n) => n && n !== '—').slice(0, 5);
                     const topB = bItems.map((it) => getClubName(it)).filter((n) => n && n !== '—').slice(0, 5);
-            
+
                     const merged = [...topA.map((n) => `${n} (A)`), ...topB.map((n) => `${n} (B)`)];
-            
+
                     setCompareError(null);
                     setCompareSelected(merged);
                   } catch (e) {
@@ -890,20 +912,20 @@ export default function Ranking() {
               >
                 Carregar Top 5 A + B
               </button>
-            
+
               {top5BLoading ? <span style={{ fontSize: 12, opacity: 0.75 }}>Carregando…</span> : null}
             </div>
-        
+
             {top5BError ? (
               <div style={{ fontSize: 12, color: 'crimson' }}>
                 Erro: {String(top5BError?.message ?? top5BError)}
               </div>
             ) : null}
-        
+
             {abSummary ? (
               <div style={{ border: '1px solid rgba(0,0,0,0.04)', borderRadius: 8, padding: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Resumo A → B</div>
-        
+
                 <div
                   style={{
                     display: 'grid',
@@ -918,21 +940,21 @@ export default function Ranking() {
                       {abSummary.entered?.length ? abSummary.entered.join(', ') : 'Nenhuma mudança'}
                     </div>
                   </div>
-        
+
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>Saíram do Top 5 (A)</div>
                     <div style={{ fontSize: 13 }}>
                       {abSummary.exited?.length ? abSummary.exited.join(', ') : 'Nenhuma mudança'}
                     </div>
                   </div>
-        
+
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>Maior alta (Δ IAP)</div>
                     <div style={{ fontSize: 13 }}>
                       {abSummary.bestUp ? `${abSummary.bestUp.name}: +${abSummary.bestUp.delta.toFixed(2)}` : '—'}
                     </div>
                   </div>
-        
+
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>Maior queda (Δ IAP)</div>
                     <div style={{ fontSize: 13 }}>
@@ -942,11 +964,11 @@ export default function Ranking() {
                 </div>
               </div>
             ) : null}
-        
+
             <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
               Modo manual: selecione até 5 clubes para sobrepor as linhas no mesmo gráfico.
             </div>
-        
+
             {clubsLoading ? (
               <div>Carregando clubes…</div>
             ) : (
@@ -961,12 +983,12 @@ export default function Ranking() {
                 {clubs.map((c) => {
                   const name = c?.label;
                   if (!name) return null;
-        
+
                   const checked = compareSelected.includes(name);
                   const hasAB = compareSelected.some((x) => /\((A|B)\)\s*$/.test(String(x)));
                   const limit = hasAB ? 10 : 5;
                   const disabled = !checked && compareSelected.length >= limit;
-        
+
                   return (
                     <label key={name} style={{ display: 'flex', gap: 8, alignItems: 'center', opacity: disabled ? 0.6 : 1 }}>
                       <input
@@ -984,14 +1006,14 @@ export default function Ranking() {
                 })}
               </div>
             )}
-        
+
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
               <div style={{ fontSize: 12, opacity: 0.8 }}>
                 Selecionados:{' '}
                 <strong>{compareSelected.length}</strong>/
                 {compareSelected.some((x) => /\((A|B)\)\s*$/.test(String(x))) ? 10 : 5}
               </div>
-        
+
               <button
                 className={btnStyles.btn}
                 onClick={() => {
@@ -1003,7 +1025,7 @@ export default function Ranking() {
               >
                 Top 5 do dia
               </button>
-        
+
               <button
                 className={btnStyles.btn}
                 onClick={() => {
@@ -1014,16 +1036,16 @@ export default function Ranking() {
               >
                 Limpar seleção
               </button>
-        
+
               {compareBusy ? <span style={{ fontSize: 12, opacity: 0.75 }}>Carregando séries…</span> : null}
             </div>
-        
+
             {compareError ? (
               <div style={{ fontSize: 13, marginTop: 8 }}>
                 Erro ao carregar comparação: {String(compareError?.message ?? compareError)}
               </div>
             ) : null}
-        
+
             {compareAligned.datasets && compareAligned.datasets.length >= 1 ? (
               <div style={{ height: 420, width: '100%', marginTop: 12 }}>
                 <Line data={{ labels: compareAligned.labels, datasets: compareAligned.datasets }} options={lineOptions} />
