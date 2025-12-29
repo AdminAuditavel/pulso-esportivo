@@ -17,10 +17,10 @@ function normalizeClubKey(name) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-function format2(x) {
+function fmt2(x) {
   const n = toNumber(x);
-  if (n === null) return null;
-  return Number(n.toFixed(2));
+  if (n === null) return '—';
+  return n.toFixed(2);
 }
 
 /**
@@ -29,8 +29,8 @@ function format2(x) {
  *  - rows: [{ club, value, rawItem, __club_key, ... }]
  *  - loading: bool
  *  - height: number (px)
- *  - topN: number (default 20)
- *  - prevMetricsMap: Map(key -> { score/iap/value, rank, ... }) (opcional)
+ *  - topN: number
+ *  - prevMetricsMap: Map(key -> { rank, score/iap/value, ... }) (opcional)
  *  - prevDateUsed: string YYYY-MM-DD (opcional)
  */
 export default function ChartPanel({
@@ -46,48 +46,49 @@ export default function ChartPanel({
   const clean = useMemo(() => {
     const arr = Array.isArray(rows) ? rows : [];
 
-    // já vem ordenado no Ranking.jsx, mas vamos garantir:
-    const normalized = arr
+    return arr
       .map((r, idx) => {
         const club = r?.club;
+        const rawItem = r?.rawItem ?? r;
         const value = toNumber(r?.value ?? r?.score ?? r?.iap ?? r?.iap_score ?? null);
+
         if (!club || club === '—' || value === null) return null;
 
-        const rawItem = r?.rawItem ?? r;
         const rankPos = Number(rawItem?.rank_position) || idx + 1;
 
-        const key =
-          r?.__club_key ||
-          rawItem?.__club_key ||
-          normalizeClubKey(club);
+        const key = r?.__club_key || rawItem?.__club_key || normalizeClubKey(club);
 
-        let prevVal = null;
+        // prev rank (para ↑/↓)
+        let prevRank = null;
         if (prevMetricsMap && typeof prevMetricsMap.get === 'function') {
           const pm =
             prevMetricsMap.get(key) ??
             prevMetricsMap.get(club) ??
             prevMetricsMap.get(normalizeClubKey(club));
 
-          const pv = pm?.score ?? pm?.iap ?? pm?.iap_score ?? pm?.value ?? null;
-          prevVal = toNumber(pv);
+          const pr = toNumber(pm?.rank);
+          prevRank = pr !== null ? pr : null;
         }
 
-        const delta = prevVal === null ? null : value - prevVal;
+        // delta rank: positivo = subiu (melhorou)
+        // ex: prevRank=19, curr=1 => delta=18 (↑ 18)
+        let rankDelta = null;
+        if (prevRank !== null) {
+          rankDelta = prevRank - rankPos;
+        }
 
         return {
           club,
           value,
           rankPos,
           key,
-          prevVal,
-          delta,
+          prevRank,
+          rankDelta,
         };
       })
       .filter(Boolean)
       .sort((a, b) => a.rankPos - b.rankPos)
       .slice(0, Math.max(1, Number(topN) || 20));
-
-    return normalized;
   }, [rows, topN, prevMetricsMap]);
 
   if (loading) {
@@ -106,26 +107,107 @@ export default function ChartPanel({
     );
   }
 
-  const labels = clean.map((r) => `#${r.rankPos} • ${r.club}`);
-  const values = clean.map((r) => r.value);
-
   const barData = {
-    labels,
+    // labels aqui não serão exibidos (vamos desenhar dentro da barra)
+    labels: clean.map((r) => r.club),
     datasets: [
       {
         label: 'IAP',
-        data: values,
+        data: clean.map((r) => r.value),
         backgroundColor: primary,
         borderWidth: 0,
-        borderRadius: 8,
-        barThickness: 14,
-        maxBarThickness: 16,
+        borderRadius: 10,
+        barThickness: 16,
+        maxBarThickness: 18,
       },
     ],
   };
 
+  // Plugin custom: desenha texto dentro da barra
+  const barInnerLabelsPlugin = {
+    id: 'barInnerLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea } = chart;
+      const meta = chart.getDatasetMeta(0);
+      const dataset = chart.data.datasets[0];
+
+      if (!meta?.data?.length) return;
+
+      ctx.save();
+      ctx.textBaseline = 'middle';
+
+      // fontes (ajuste fino)
+      const leftFont = '600 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
+      const rightFont = '700 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
+
+      for (let i = 0; i < meta.data.length; i += 1) {
+        const bar = meta.data[i];
+        const row = clean[i];
+        const value = dataset.data[i];
+
+        // coordenadas do retângulo da barra
+        // bar é um elemento; getProps é mais robusto em versões diferentes
+        const props = typeof bar.getProps === 'function'
+          ? bar.getProps(['x', 'y', 'base', 'width', 'height'], true)
+          : bar;
+
+        const xEnd = props.x;          // final da barra (direita)
+        const xStart = props.base;     // início da barra (esquerda)
+        const yMid = props.y;
+
+        // padding interno
+        const padLeft = 10;
+        const padRight = 10;
+
+        // garante que desenhamos somente dentro da área útil
+        const leftX = Math.max(xStart + padLeft, chartArea.left + 4);
+        const rightX = Math.min(xEnd - padRight, chartArea.right - 4);
+
+        // label esquerda: "1° . Chapecoense ↑ 18"
+        let trendTxt = '';
+        if (row.rankDelta !== null) {
+          const d = row.rankDelta;
+          if (d > 0) trendTxt = `↑ ${d}`;
+          else if (d < 0) trendTxt = `↓ ${Math.abs(d)}`;
+          else trendTxt = '• 0';
+        } else if (prevDateUsed) {
+          // existe prevDateUsed, mas sem match desse clube no dia anterior
+          trendTxt = '• —';
+        } else {
+          // sem dia anterior
+          trendTxt = '';
+        }
+
+        const leftText = `${row.rankPos}° . ${row.club}${trendTxt ? ' ' + trendTxt : ''}`;
+
+        // label direita: "IAP: 78.59"
+        const rightText = `IAP: ${fmt2(value)}`;
+
+        // escolha de cor do texto (dentro da barra verde)
+        ctx.fillStyle = '#ffffff';
+
+        // desenha esquerda
+        ctx.font = leftFont;
+        // evita desenhar se a barra for curta demais
+        if (rightX - leftX > 80) {
+          ctx.fillText(leftText, leftX, yMid);
+        }
+
+        // desenha direita (alinhado à direita)
+        ctx.font = rightFont;
+        ctx.textAlign = 'right';
+        if (rightX - leftX > 60) {
+          ctx.fillText(rightText, rightX, yMid);
+        }
+        ctx.textAlign = 'left';
+      }
+
+      ctx.restore();
+    },
+  };
+
   const barOptions = {
-    indexAxis: 'y', // horizontal
+    indexAxis: 'y',
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -135,56 +217,55 @@ export default function ChartPanel({
         callbacks: {
           title: (items) => {
             if (!items?.length) return '';
-            // o label já contém rank + clube
-            return items[0].label || '';
+            const idx = items[0].dataIndex;
+            const row = clean[idx];
+            return `${row.rankPos}° • ${row.club}`;
           },
           label: (ctx) => {
             const idx = ctx.dataIndex;
             const row = clean[idx];
-            const iap = format2(row?.value);
-            const parts = [`IAP: ${iap !== null ? iap.toFixed(2) : '—'}`];
 
-            if (prevDateUsed && row?.delta !== null) {
-              const d = format2(row.delta);
-              const sign = d > 0 ? '+' : '';
-              parts.push(`Δ vs ${prevDateUsed}: ${sign}${d.toFixed(2)}`);
-            } else if (prevDateUsed) {
-              parts.push(`Δ vs ${prevDateUsed}: —`);
+            const lines = [];
+            lines.push(`IAP: ${fmt2(row.value)}`);
+
+            // rank delta
+            if (prevDateUsed) {
+              if (row.rankDelta === null) {
+                lines.push(`Movimento vs ${prevDateUsed}: —`);
+              } else if (row.rankDelta > 0) {
+                lines.push(`Movimento vs ${prevDateUsed}: ↑ ${row.rankDelta}`);
+              } else if (row.rankDelta < 0) {
+                lines.push(`Movimento vs ${prevDateUsed}: ↓ ${Math.abs(row.rankDelta)}`);
+              } else {
+                lines.push(`Movimento vs ${prevDateUsed}: 0`);
+              }
             }
 
-            return parts;
+            return lines;
           },
         },
       },
     },
     scales: {
       y: {
-        ticks: {
-          autoSkip: false,
-          font: { size: 12 },
-          // deixa o texto compacto
-          callback: function (val) {
-            const label = this.getLabelForValue(val);
-            // corta se ficar grande
-            return String(label).length > 26 ? String(label).slice(0, 26) + '…' : label;
-          },
-        },
+        // vamos esconder ticks porque o texto já vai dentro da barra
+        ticks: { display: false },
         grid: { display: false },
       },
       x: {
         beginAtZero: true,
-        ticks: { font: { size: 12 } },
         grid: { color: 'rgba(0,0,0,0.06)' },
+        ticks: { font: { size: 12 } },
       },
     },
   };
 
   return (
     <div style={{ height, width: '100%' }}>
-      <Bar data={barData} options={barOptions} />
-      {/* legenda pequena */}
+      <Bar data={barData} options={barOptions} plugins={[barInnerLabelsPlugin]} />
       <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
-        Exibindo Top {clean.length}. Passe o mouse/toque nas barras para ver IAP e Δ{prevDateUsed ? ` vs ${prevDateUsed}` : ''}.
+        {prevDateUsed ? `Comparação: vs ${prevDateUsed}.` : 'Sem comparação (sem dia anterior).'}
+        {' '}Passe o mouse/toque nas barras para detalhes.
       </div>
     </div>
   );
