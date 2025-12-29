@@ -12,47 +12,83 @@ function toNumber(x) {
   return Number.isFinite(n) ? n : null;
 }
 
-function truncateLabel(s, max = 18) {
-  const str = String(s ?? '').trim();
-  if (str.length <= max) return str;
-  return str.slice(0, Math.max(0, max - 1)) + '…';
+function normalizeClubKey(name) {
+  const s = String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function format2(x) {
+  const n = toNumber(x);
+  if (n === null) return null;
+  return Number(n.toFixed(2));
 }
 
 /**
- * ChartPanel (Ranking)
+ * ChartPanel (Ranking chart)
  * Props:
- *  - rows: [{ club, value/score/iap/iap_score, ... }]
- *  - loading: boolean
- *  - topN: number (default 15) -> limita para ficar compacto
- *  - height: number (default 520)
- *  - horizontal: boolean (default true)
- *  - onBarClick: (clubName: string) => void (opcional)
+ *  - rows: [{ club, value, rawItem, __club_key, ... }]
+ *  - loading: bool
+ *  - height: number (px)
+ *  - topN: number (default 20)
+ *  - prevMetricsMap: Map(key -> { score/iap/value, rank, ... }) (opcional)
+ *  - prevDateUsed: string YYYY-MM-DD (opcional)
  */
 export default function ChartPanel({
   rows = [],
   loading = false,
-  topN = 15,
   height = 520,
-  horizontal = true,
-  onBarClick,
+  topN = 20,
+  prevMetricsMap = null,
+  prevDateUsed = '',
 }) {
   const primary = MANUAL_PALETTE[0] ?? '#337d26';
 
   const clean = useMemo(() => {
     const arr = Array.isArray(rows) ? rows : [];
-    const mapped = arr
-      .map((r) => {
+
+    // já vem ordenado no Ranking.jsx, mas vamos garantir:
+    const normalized = arr
+      .map((r, idx) => {
         const club = r?.club;
-        const v = toNumber(r?.value ?? r?.score ?? r?.iap ?? r?.iap_score ?? null);
-        return { club, value: v };
+        const value = toNumber(r?.value ?? r?.score ?? r?.iap ?? r?.iap_score ?? null);
+        if (!club || club === '—' || value === null) return null;
+
+        const rawItem = r?.rawItem ?? r;
+        const rankPos = Number(rawItem?.rank_position) || idx + 1;
+
+        const key =
+          r?.__club_key ||
+          rawItem?.__club_key ||
+          normalizeClubKey(club);
+
+        let prevVal = null;
+        if (prevMetricsMap && typeof prevMetricsMap.get === 'function') {
+          const pm =
+            prevMetricsMap.get(key) ??
+            prevMetricsMap.get(club) ??
+            prevMetricsMap.get(normalizeClubKey(club));
+
+          const pv = pm?.score ?? pm?.iap ?? pm?.iap_score ?? pm?.value ?? null;
+          prevVal = toNumber(pv);
+        }
+
+        const delta = prevVal === null ? null : value - prevVal;
+
+        return {
+          club,
+          value,
+          rankPos,
+          key,
+          prevVal,
+          delta,
+        };
       })
-      .filter((r) => r.club && r.club !== '—' && r.value !== null);
+      .filter(Boolean)
+      .sort((a, b) => a.rankPos - b.rankPos)
+      .slice(0, Math.max(1, Number(topN) || 20));
 
-    // Se já vier ordenado, mantém; se não, garante desc
-    mapped.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
-
-    return mapped.slice(0, Math.max(1, Number(topN) || 15));
-  }, [rows, topN]);
+    return normalized;
+  }, [rows, topN, prevMetricsMap]);
 
   if (loading) {
     return (
@@ -70,84 +106,86 @@ export default function ChartPanel({
     );
   }
 
-  const labelsFull = clean.map((r) => r.club);
-  const labelsShort = labelsFull.map((s) => truncateLabel(s, 18));
+  const labels = clean.map((r) => `#${r.rankPos} • ${r.club}`);
+  const values = clean.map((r) => r.value);
 
   const barData = {
-    labels: horizontal ? labelsFull : labelsShort,
+    labels,
     datasets: [
       {
         label: 'IAP',
-        data: clean.map((r) => r.value),
+        data: values,
         backgroundColor: primary,
-        borderRadius: 6,
-        barThickness: horizontal ? 16 : undefined,
-        maxBarThickness: 22,
+        borderWidth: 0,
+        borderRadius: 8,
+        barThickness: 14,
+        maxBarThickness: 16,
       },
     ],
   };
 
   const barOptions = {
+    indexAxis: 'y', // horizontal
     responsive: true,
     maintainAspectRatio: false,
-    indexAxis: horizontal ? 'y' : 'x',
     plugins: {
       legend: { display: false },
       tooltip: {
         enabled: true,
         callbacks: {
           title: (items) => {
-            if (!items || items.length === 0) return '';
-            const idx = items[0].dataIndex;
-            return labelsFull[idx] ?? '';
+            if (!items?.length) return '';
+            // o label já contém rank + clube
+            return items[0].label || '';
           },
           label: (ctx) => {
-            const v = ctx?.parsed?.[horizontal ? 'x' : 'y'];
-            const num = typeof v === 'number' ? v : Number(v);
-            if (!Number.isFinite(num)) return 'IAP: —';
-            return `IAP: ${num.toFixed(2)}`;
+            const idx = ctx.dataIndex;
+            const row = clean[idx];
+            const iap = format2(row?.value);
+            const parts = [`IAP: ${iap !== null ? iap.toFixed(2) : '—'}`];
+
+            if (prevDateUsed && row?.delta !== null) {
+              const d = format2(row.delta);
+              const sign = d > 0 ? '+' : '';
+              parts.push(`Δ vs ${prevDateUsed}: ${sign}${d.toFixed(2)}`);
+            } else if (prevDateUsed) {
+              parts.push(`Δ vs ${prevDateUsed}: —`);
+            }
+
+            return parts;
           },
         },
       },
     },
-    scales: horizontal
-      ? {
-          x: {
-            beginAtZero: true,
-            ticks: {
-              maxTicksLimit: 6,
-            },
-            grid: {
-              color: 'rgba(0,0,0,0.06)',
-            },
+    scales: {
+      y: {
+        ticks: {
+          autoSkip: false,
+          font: { size: 12 },
+          // deixa o texto compacto
+          callback: function (val) {
+            const label = this.getLabelForValue(val);
+            // corta se ficar grande
+            return String(label).length > 26 ? String(label).slice(0, 26) + '…' : label;
           },
-          y: {
-            ticks: {
-              callback: function (value, index) {
-                // mostra label curto, tooltip mostra completo
-                return labelsShort[index] ?? '';
-              },
-              autoSkip: false,
-            },
-            grid: {
-              display: false,
-            },
-          },
-        }
-      : {
-          y: { beginAtZero: true },
         },
-    onClick: (evt, elements, chart) => {
-      if (!onBarClick || !elements || elements.length === 0) return;
-      const idx = elements[0]?.index;
-      const clubName = labelsFull[idx];
-      if (clubName) onBarClick(clubName);
+        grid: { display: false },
+      },
+      x: {
+        beginAtZero: true,
+        ticks: { font: { size: 12 } },
+        grid: { color: 'rgba(0,0,0,0.06)' },
+      },
     },
   };
 
   return (
     <div style={{ height, width: '100%' }}>
       <Bar data={barData} options={barOptions} />
+      {/* legenda pequena */}
+      <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
+        Exibindo Top {clean.length}. Passe o mouse/toque nas barras para ver IAP e Δ{prevDateUsed ? ` vs ${prevDateUsed}` : ''}.
+      </div>
     </div>
   );
 }
