@@ -781,9 +781,15 @@ export default function Ranking() {
         </section>
 
         {/* Chart */}
-        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: 12, alignItems: 'start' }}>
-          <ChartPanel rows={rows} loading={rankingLoading} topN={15} height={520} horizontal />
-          <RankingTable tableItems={tableItems} renderTrend={renderTrend} linkClub={linkClub} height={520} />
+        <div style={{ marginTop: 12 }}>
+          <ChartPanel
+            rows={rows}
+            loading={rankingLoading}
+            height={520}
+            topN={20}
+            prevMetricsMap={prevMetricsMap}
+            prevDateUsed={prevDateUsed}
+          />
         </div>
 
         {/* Table */}
