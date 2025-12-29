@@ -1,4 +1,4 @@
-// /pulso-publico/components/Ranking.jsx
+//pulso-publico/components/Ranking.jsx
 'use client';
 
 import { useMemo, useState, useEffect, useRef } from 'react';
@@ -785,8 +785,6 @@ export default function Ranking() {
           <ChartPanel
             rows={rows}
             loading={rankingLoading}
-            height={520}
-            topN={20}
             prevMetricsMap={prevMetricsMap}
             prevDateUsed={prevDateUsed}
           />
