@@ -140,7 +140,8 @@ export default function ChartPanel({
       ctx.textBaseline = 'middle';
 
       const insideFont = '600 13px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
-      const valueFont = '800 13px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
+      // valor: fonte menor e sem negrito (peso 400)
+      const valueFont = '400 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
 
       // mapeia explicitamente dataIndex -> elemento gráfico
       const dataIndexToBar = new Map();
