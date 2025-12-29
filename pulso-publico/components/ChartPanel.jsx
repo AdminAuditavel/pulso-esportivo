@@ -23,16 +23,6 @@ function fmt2(x) {
   return n.toFixed(2);
 }
 
-/**
- * ChartPanel (Ranking chart)
- * Props:
- *  - rows: [{ club, value, rawItem, __club_key, ... }]
- *  - loading: bool
- *  - height: number (px)
- *  - topN: number
- *  - prevMetricsMap: Map(key -> { rank, score/iap/value, ... }) (opcional)
- *  - prevDateUsed: string YYYY-MM-DD (opcional)
- */
 export default function ChartPanel({
   rows = [],
   loading = false,
@@ -50,12 +40,18 @@ export default function ChartPanel({
       .map((r, idx) => {
         const club = r?.club;
         const rawItem = r?.rawItem ?? r;
-        const value = toNumber(r?.value ?? r?.score ?? r?.iap ?? r?.iap_score ?? null);
 
+        const value = toNumber(r?.value ?? r?.score ?? r?.iap ?? r?.iap_score ?? null);
         if (!club || club === '—' || value === null) return null;
 
         const rankPos = Number(rawItem?.rank_position) || idx + 1;
-        const key = r?.__club_key || rawItem?.__club_key || normalizeClubKey(club);
+
+        // CHAVE ESTÁVEL: club_id primeiro
+        const key =
+          (rawItem?.club_id ? String(rawItem.club_id) : null) ||
+          (r?.__club_key ? String(r.__club_key) : null) ||
+          (rawItem?.__club_key ? String(rawItem.__club_key) : null) ||
+          normalizeClubKey(club);
 
         let prevRank = null;
         if (prevMetricsMap && typeof prevMetricsMap.get === 'function') {
@@ -68,8 +64,7 @@ export default function ChartPanel({
           prevRank = pr !== null ? pr : null;
         }
 
-        let rankDelta = null;
-        if (prevRank !== null) rankDelta = prevRank - rankPos;
+        const rankDelta = prevRank !== null ? (prevRank - rankPos) : null;
 
         return { club, value, rankPos, key, prevRank, rankDelta };
       })
@@ -88,16 +83,7 @@ export default function ChartPanel({
 
   if (clean.length === 0) {
     return (
-      <div
-        style={{
-          height,
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: 0.8,
-        }}
-      >
+      <div style={{ height, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.8 }}>
         Sem dados para plotar.
       </div>
     );
@@ -118,21 +104,20 @@ export default function ChartPanel({
     ],
   };
 
-  const barInnerLabelsPlugin = {
-    id: 'barInnerLabels',
+  const labelsPlugin = {
+    id: 'labelsPlugin',
     afterDatasetsDraw(chart) {
       const { ctx, chartArea } = chart;
       const meta = chart.getDatasetMeta(0);
       const dataset = chart.data.datasets[0];
-
       if (!meta?.data?.length) return;
 
       ctx.save();
       ctx.textBaseline = 'middle';
 
+      const leftFont = '800 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
       const insideFont = '600 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
-      const outsideFont = '700 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
-      const deltaFont = '700 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
+      const valueFont = '800 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
 
       for (let i = 0; i < meta.data.length; i += 1) {
         const bar = meta.data[i];
@@ -144,52 +129,52 @@ export default function ChartPanel({
             ? bar.getProps(['x', 'y', 'base', 'width', 'height'], true)
             : bar;
 
-        const xEnd = props.x; // fim da barra (direita)
-        const xStart = props.base; // início (esquerda)
+        const xEnd = props.x;      // fim da barra
+        const xStart = props.base; // início da barra
         const yMid = props.y;
 
-        const padIn = 10;
-        const padOut = 10;
-
-        /* ===========================
-           0) DELTA FORA DA BARRA (à esquerda)
-           Formato: ↑ 3 | ↓ 2 | — 
-           =========================== */
-        let deltaTxt = '—';
-        if (typeof row.rankDelta === 'number') {
-          if (row.rankDelta > 0) deltaTxt = `↑ ${row.rankDelta}`;
-          else if (row.rankDelta < 0) deltaTxt = `↓ ${Math.abs(row.rankDelta)}`;
-          else deltaTxt = '—';
-        } else if (!prevDateUsed) {
-          // se não existe comparação, não exibe indicador numérico
-          deltaTxt = '—';
-        }
-
-        // coluna fixa à esquerda (antes do chartArea.left)
-        const deltaX = chartArea.left - 10; // "fora" do chartArea; precisa padding.left suficiente
-
-        ctx.font = deltaFont;
+        // ===== (A) TREND fora do gráfico, à esquerda =====
+        // Espaço reservado pela padding.left do layout
+        const leftX = chartArea.left - 10; // ancora na borda esquerda do chartArea
+        ctx.font = leftFont;
         ctx.textAlign = 'right';
 
-        if (typeof row.rankDelta === 'number' && row.rankDelta > 0) ctx.fillStyle = 'rgba(51,125,38,0.95)';
-        else if (typeof row.rankDelta === 'number' && row.rankDelta < 0) ctx.fillStyle = 'rgba(180,30,30,0.95)';
-        else ctx.fillStyle = 'rgba(0,0,0,0.40)';
+        // texto e cor
+        let trendText = '—';
+        let trendColor = 'rgba(0,0,0,0.45)';
 
-        ctx.fillText(deltaTxt, deltaX, yMid);
+        if (prevDateUsed) {
+          if (row.rankDelta === null) {
+            trendText = '—';
+          } else if (row.rankDelta > 0) {
+            trendText = `↑ ${row.rankDelta}`;
+            trendColor = '#1b7f3a'; // verde
+          } else if (row.rankDelta < 0) {
+            trendText = `↓ ${Math.abs(row.rankDelta)}`;
+            trendColor = '#c62828'; // vermelho
+          } else {
+            trendText = '0';
+            trendColor = 'rgba(0,0,0,0.55)';
+          }
+        } else {
+          trendText = '—';
+        }
 
-        /* ===========================
-           1) TEXTO DENTRO DA BARRA (sem ↑/↓):
-           "20° Botafogo"
-           =========================== */
-        const insideText = `${row.rankPos}° ${row.club}`;
+        ctx.fillStyle = trendColor;
+        ctx.fillText(trendText, leftX, yMid);
 
-        const innerLeft = Math.max(xStart + padIn, chartArea.left + 6);
+        // ===== (B) TEXTO dentro da barra (posição + clube) =====
+        const padIn = 10;
+        const innerLeft = Math.max(xStart + padIn, chartArea.left + 4);
         const innerRight = Math.min(xEnd - padIn, chartArea.right - 4);
         const innerWidth = innerRight - innerLeft;
 
         ctx.font = insideFont;
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'left';
+
+        // sem ponto após posição
+        const insideText = `${row.rankPos}° ${row.club}`;
 
         if (innerWidth > 70) {
           let txt = insideText;
@@ -205,15 +190,13 @@ export default function ChartPanel({
           }
         }
 
-        /* ===========================
-           2) VALOR FORA DA BARRA (à direita): "78.59"
-           =========================== */
+        // ===== (C) VALOR fora da barra (direita): apenas número =====
+        const padOut = 10;
         const outX = Math.min(xEnd + padOut, chartArea.right - 2);
 
-        ctx.font = outsideFont;
+        ctx.font = valueFont;
         ctx.fillStyle = 'rgba(0,0,0,0.78)';
         ctx.textAlign = 'left';
-
         ctx.fillText(fmt2(value), outX, yMid);
       }
 
@@ -226,9 +209,8 @@ export default function ChartPanel({
     responsive: true,
     maintainAspectRatio: false,
     layout: {
-      // left: espaço para "↑ 12" fora da barra
-      // right: espaço para o IAP fora da barra
-      padding: { left: 58, right: 46 },
+      // espaço à esquerda para o ↑/↓ e à direita para o valor
+      padding: { left: 44, right: 46 },
     },
     plugins: {
       legend: { display: false },
@@ -275,7 +257,7 @@ export default function ChartPanel({
 
   return (
     <div style={{ height, width: '100%' }}>
-      <Bar data={barData} options={barOptions} plugins={[barInnerLabelsPlugin]} />
+      <Bar data={barData} options={barOptions} plugins={[labelsPlugin]} />
       <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
         {prevDateUsed ? `Comparação: vs ${prevDateUsed}.` : 'Sem comparação (sem dia anterior).'} Passe o mouse/toque nas barras para detalhes.
       </div>
