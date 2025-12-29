@@ -4,9 +4,9 @@
 :root {
   /* página */
   --background: #ffffff;
-  --foreground: #000000;
+  --foreground: #111827; /* levemente mais suave que #000 */
 
-  /* paleta verde solicitada */
+  /* paleta verde (usar em detalhes, não em fundos grandes) */
   --c-1: #337d26; /* primário forte */
   --c-2: #549d45;
   --c-3: #74be63;
@@ -15,10 +15,12 @@
 
   /* aliases usados por outros módulos */
   --primary: var(--c-1);
-  --muted: rgba(0,0,0,0.48);
-  --card: #f6fff4;
+  --muted: rgba(17, 24, 39, 0.55);
 
-  /* tipografia (pode apontar para fontes locais ou externas) */
+  /* CARDS: agora tudo branco (remove o “verde claro” do layout) */
+  --card: #ffffff;
+
+  /* tipografia */
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace;
 }
@@ -31,12 +33,16 @@
   --font-mono: var(--font-mono);
 }
 
-/* Dark mode: mantém legibilidade (inverte em áreas onde for necessário) */
+/* Dark mode: mantém legibilidade */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #071204; /* tom escuro com viés esverdeado */
-    --foreground: #e6f8e6;
-    --card: rgba(51,125,38,0.06);
+    --background: #0b1220;
+    --foreground: #e5e7eb;
+
+    /* card levemente destacado no dark (sem esverdear a tela) */
+    --card: rgba(255, 255, 255, 0.04);
+
+    --muted: rgba(229, 231, 235, 0.60);
   }
 }
 
@@ -69,14 +75,14 @@ a:hover, a:focus {
   text-decoration: underline;
 }
 
-/* Headings (garante contraste e pesos) */
+/* Headings */
 h1, h2, h3, h4 {
   color: var(--foreground);
   margin: 0 0 8px 0;
   font-weight: 700;
 }
 
-/* Buttons: garantir fallback caso módulos CSS não carreguem */
+/* Buttons: fallback */
 button {
   font-family: inherit;
 }
@@ -90,20 +96,20 @@ button {
   color: var(--muted);
 }
 
-/* Pequenos ajustes responsivos padrões */
+/* Layout container */
 .container {
   max-width: 1100px;
   margin: 0 auto;
   padding: 18px;
 }
 
-/* Evita que imagens SVG/PNG quebrem visualmente */
+/* Imagens */
 img {
   max-width: 100%;
   display: block;
 }
 
-/* Forçar boa legibilidade em dark mode */
+/* Forçar legibilidade em dark mode */
 @media (prefers-color-scheme: dark) {
   h1, h2, h3, h4, p, a, span, label, option {
     color: var(--foreground);
