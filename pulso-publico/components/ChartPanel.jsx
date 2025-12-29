@@ -29,6 +29,7 @@ export default function ChartPanel({
   height = 520,
   topN = 20,
   prevMetricsMap = null,
+  prevRankMap = null,
   prevDateUsed = '',
 }) {
   const primary = MANUAL_PALETTE[0] ?? '#337d26';
@@ -53,25 +54,35 @@ export default function ChartPanel({
           (rawItem?.__club_key ? String(rawItem.__club_key) : null) ||
           normalizeClubKey(club);
 
+        // ---- try prevRankMap first (preferred) ----
         let prevRank = null;
-        if (prevMetricsMap && typeof prevMetricsMap.get === 'function') {
+        if (prevRankMap && typeof prevRankMap.get === 'function') {
+          const prRaw =
+            prevRankMap.get(key) ??
+            prevRankMap.get(club) ??
+            prevRankMap.get(normalizeClubKey(club));
+          const pr = toNumber(prRaw);
+          prevRank = pr !== null ? pr : null;
+        }
+
+        // ---- fallback: prevMetricsMap may contain rank in payload ----
+        if ((prevRank === null || prevRank === undefined) && prevMetricsMap && typeof prevMetricsMap.get === 'function') {
           const pm =
             prevMetricsMap.get(key) ??
             prevMetricsMap.get(club) ??
             prevMetricsMap.get(normalizeClubKey(club));
-
           const pr = toNumber(pm?.rank);
-          prevRank = pr !== null ? pr : null;
+          if (pr !== null) prevRank = pr;
         }
 
         const rankDelta = prevRank !== null ? (prevRank - rankPos) : null;
 
-        return { club, value, rankPos, key, prevRank, rankDelta };
+        return { club, value, rankPos, key, prevRank, rankDelta, rawItem };
       })
       .filter(Boolean)
       .sort((a, b) => a.rankPos - b.rankPos)
       .slice(0, Math.max(1, Number(topN) || 20));
-  }, [rows, topN, prevMetricsMap]);
+  }, [rows, topN, prevMetricsMap, prevRankMap]);
 
   if (loading) {
     return (
