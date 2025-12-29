@@ -13,7 +13,7 @@ import HeaderLogo from './HeaderLogo';
 import InsightsPanel from './InsightsPanel';
 import TopMovers from './TopMovers';
 import ChartPanel from './ChartPanel';
-// RankingTable removido — não é mais utilizado
+import RankingTable from './RankingTable';
 
 import {
   getClubName,
@@ -372,7 +372,7 @@ export default function Ranking() {
     return baseRows.filter((r) => r.club === selectedClub);
   }, [baseRows, selectedClub]);
 
-  // tableItems para Insights/TopMovers (antes também usado pela tabela)
+  // tableItems para Insights/TopMovers/RankingTable (com compat)
   const tableItems = useMemo(() => {
     if (selectedClub) return rows.map((r) => r.rawItem);
     return Array.isArray(rankedData) ? rankedData : [];
@@ -502,7 +502,9 @@ export default function Ranking() {
   }, [effectiveDate]);
 
   function renderTrend(item, idx) {
-    const currRank = toNumber(item?.rank_position) !== null ? toNumber(item?.rank_position) : idx + 1;
+    // currRank: prefer rank_position do item, fallback para index
+    const currRankNum = toNumber(item?.rank_position);
+    const currRank = currRankNum !== null ? currRankNum : idx + 1;
 
     const display = getClubName(item);
 
@@ -511,15 +513,44 @@ export default function Ranking() {
       item?.__club_key ||
       normalizeClubKey(display);
 
-    const prevRank =
+    // tenta obter rank anterior
+    let prevRank =
       prevRankMap.get(key) ??
       prevRankMap.get(display) ??
       prevRankMap.get(normalizeClubKey(display));
 
+    // se não tem rank anterior, tenta extrair de prevMetricsMap (alguns payloads guardam rank ali)
+    if (prevRank === undefined || prevRank === null) {
+      const prevMetricsCandidate =
+        prevMetricsMap.get(key) ??
+        prevMetricsMap.get(display) ??
+        prevMetricsMap.get(normalizeClubKey(display));
+      if (prevMetricsCandidate && typeof prevMetricsCandidate.rank === 'number') {
+        prevRank = prevMetricsCandidate.rank;
+      }
+    }
+
+    // se não há data anterior / rank anterior, tenta mostrar variação por score (IAP) se disponível
     if (!prevDateUsed || prevRank === undefined || prevRank === null || !currRank) {
+      const prevMetrics =
+        prevMetricsMap.get(key) ??
+        prevMetricsMap.get(display) ??
+        prevMetricsMap.get(normalizeClubKey(display));
+
+      const currScore = pickIapNumber(item) ?? toNumber(item?._computed_value);
+
+      if (prevDateUsed && prevMetrics && currScore !== null && typeof prevMetrics.score === 'number') {
+        const scoreDelta = currScore - prevMetrics.score;
+        const absDelta = Number(Math.abs(scoreDelta).toFixed(2));
+        if (scoreDelta > 0) return <TrendBadge direction="up" value={absDelta} />;
+        if (scoreDelta < 0) return <TrendBadge direction="down" value={absDelta} />;
+        return <TrendBadge direction="flat" value={0} />;
+      }
+
       return <span style={{ opacity: 0.7 }}>—</span>;
     }
 
+    // se temos rank anterior: delta de posições (positivo => subiu)
     const delta = prevRank - currRank;
 
     if (delta > 0) return <TrendBadge direction="up" value={delta} />;
@@ -811,7 +842,10 @@ export default function Ranking() {
           />
         </div>
 
-        {/* tabela removida */}
+        {/* Table */}
+        <div style={{ marginTop: 12 }}>
+          <RankingTable tableItems={tableItems} renderTrend={renderTrend} linkClub={linkClub} />
+        </div>
 
         {/* Comparação (card) */}
         <section className={ctrlStyles.topicCard} style={{ marginTop: 12 }}>
@@ -825,7 +859,7 @@ export default function Ranking() {
             </div>
 
             {/* Linha única: Data A / Data B / seletor / botão */}
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }>
               {/* Data A */}
               <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span
@@ -842,7 +876,7 @@ export default function Ranking() {
               </div>
 
               {/* Data B */}
-              <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }>
                 <span
                   style={{
                     width: 14,
