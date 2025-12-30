@@ -981,7 +981,7 @@ export default function Ranking() {
                     <div style={{ fontSize: 13 }}>
                       {abSummary.bestUp
                         ? `${abSummary.bestUp.name}: +${Math.abs(Number(abSummary.bestUp.delta) || 0).toFixed(2)}`
-                        : '—'}
+                        : 'Sem alta no Top 5'}
                     </div>
                   </div>
 
@@ -990,24 +990,10 @@ export default function Ranking() {
                     <div style={{ fontSize: 13 }}>
                       {abSummary.bestDown
                         ? `${abSummary.bestDown.name}: -${Math.abs(Number(abSummary.bestDown.delta) || 0).toFixed(2)}`
-                        : '—'}
+                        : 'Sem queda no Top 5'}
                     </div>
                   </div>
                 </div>
-                
-                {/* DEBUG TEMPORÁRIO — remover depois */}
-                {abSummary?.deltas?.length ? (
-                  <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                      Debug deltas (A → B)
-                    </div>
-                    <pre style={{ maxHeight: 180, overflow: 'auto', margin: 0 }}>
-                      {JSON.stringify(abSummary.deltas.slice(0, 10), null, 2)}
-                    </pre>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
 
             <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
               Modo manual: selecione até 5 clubes para sobrepor as linhas no mesmo gráfico.
