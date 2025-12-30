@@ -994,6 +994,18 @@ export default function Ranking() {
                     </div>
                   </div>
                 </div>
+                
+                {/* DEBUG TEMPORÁRIO — remover depois */}
+                {abSummary?.deltas?.length ? (
+                  <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                      Debug deltas (A → B)
+                    </div>
+                    <pre style={{ maxHeight: 180, overflow: 'auto', margin: 0 }}>
+                      {JSON.stringify(abSummary.deltas.slice(0, 10), null, 2)}
+                    </pre>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
