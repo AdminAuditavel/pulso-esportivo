@@ -225,8 +225,15 @@ export function buildAbSummary(aItems, bItems) {
       bRank: b?.rank ?? null,
     });
 
-    if (!bestUp || delta > bestUp.delta) bestUp = { name, delta };
-    if (!bestDown || delta < bestDown.delta) bestDown = { name, delta };
+    // bestUp: apenas deltas positivos
+    if (delta > 0) {
+      if (!bestUp || delta > bestUp.delta) bestUp = { name, delta };
+    }
+    
+    // bestDown: apenas deltas negativos
+    if (delta < 0) {
+      if (!bestDown || delta < bestDown.delta) bestDown = { name, delta };
+    }
   }
 
   return {
