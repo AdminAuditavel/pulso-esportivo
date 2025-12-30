@@ -33,6 +33,28 @@ function formatDateBRdash(isoYmd) {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
+// helpers de cor (interpolação)
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+function lerpColorHex(aHex, bHex, t) {
+  const a = hexToRgb(aHex);
+  const b = hexToRgb(bHex);
+  const r = Math.round(lerp(a.r, b.r, t));
+  const g = Math.round(lerp(a.g, b.g, t));
+  const bl = Math.round(lerp(a.b, b.b, t));
+  return rgbToHex(r, g, bl);
+}
+function hexToRgb(hex) {
+  const h = String(hex).replace('#', '');
+  const bigint = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
+}
+function rgbToHex(r, g, b) {
+  const toHex = (v) => v.toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
 export default function ChartPanel({
   rows = [],
   loading = false,
@@ -120,13 +142,34 @@ export default function ChartPanel({
     );
   }
 
-  // Opção 2: cor por movimento (uma cor por barra)
+  // Cores base para interpolação
+  const greenLight = '#d7f4e0'; // subidas pequenas
+  const greenDark = '#1b7f3a';  // subidas grandes
+  const redLight = '#f7d6d6';   // quedas pequenas
+  const redDark = '#c62828';    // quedas grandes
+  const neutral = '#6c9bd1';    // sem comparação / neutro
+
+  // calcula magnitude máxima de rankDelta para normalizar (evita saturar pequenas variações)
+  const absDeltas = clean.map((r) => (r.rankDelta !== null && r.rankDelta !== undefined ? Math.abs(Number(r.rankDelta)) : 0));
+  const maxAbsDelta = Math.max(...absDeltas, 1); // evita divisão por zero
+
+  // Opção 2 (gradiente por magnitude do movimento)
   const bgColors = clean.map((r) => {
-    if (!prevDateUsed) return primary;
-    if (r.rankDelta === null || r.rankDelta === undefined) return '#6c9bd1';
-    if (r.rankDelta > 0) return '#1b7f3a';
-    if (r.rankDelta < 0) return '#c62828';
-    return '#8d8d8d';
+    if (!prevDateUsed) return primary; // sem comparação -> cor padrão
+    if (r.rankDelta === null || r.rankDelta === undefined) return neutral;
+
+    // normaliza t em [0,1] pela magnitude relativa ao maxAbsDelta
+    const t = Math.min(Math.abs(Number(r.rankDelta)) / maxAbsDelta, 1);
+
+    if (r.rankDelta > 0) {
+      // subiu: de greenLight (t=0) -> greenDark (t=1)
+      return lerpColorHex(greenLight, greenDark, t);
+    }
+    if (r.rankDelta < 0) {
+      // caiu: de redLight (t=0) -> redDark (t=1)
+      return lerpColorHex(redLight, redDark, t);
+    }
+    return neutral;
   });
 
   const barData = {
@@ -178,8 +221,15 @@ export default function ChartPanel({
         const innerRight = Math.min(xEnd - padIn, chartArea.right - 6);
         const innerWidth = innerRight - innerLeft;
 
+        // decidir cor do texto interno dependendo da cor da barra (se for muito claro, usar texto escuro)
+        const barColor = bgColors[dataIndex] || primary;
+        const barRgb = hexToRgb(barColor);
+        // luminance aproximada para contraste: 0..255, se > 180 usa texto escuro
+        const luminance = 0.2126 * barRgb.r + 0.7152 * barRgb.g + 0.0722 * barRgb.b;
+        const insideTextColor = luminance > 180 ? 'rgba(0,0,0,0.85)' : '#ffffff';
+
         ctx.font = insideFont;
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = insideTextColor;
         ctx.textAlign = 'left';
 
         const insideText = `${row.rankPos}° ${row.club}`;
@@ -339,7 +389,6 @@ export default function ChartPanel({
     const ttWidth = rect.width || 160;
     const ttHeight = rect.height || 40;
 
-    // left/top em viewport coords (já são viewport-based)
     let left = sourceViewportX - ttWidth / 2;
     const minLeft = 8;
     const maxLeft = window.innerWidth - ttWidth - 8;
@@ -357,7 +406,6 @@ export default function ChartPanel({
     else if (topBelow <= maxTop) top = topBelow;
     else top = Math.min(Math.max(topAbove, minTop), maxTop);
 
-    // position: fixed usa coordenadas de viewport diretamente
     tooltipEl.style.left = `${Math.round(left)}px`;
     tooltipEl.style.top = `${Math.round(top)}px`;
     tooltipEl.style.opacity = '1';
