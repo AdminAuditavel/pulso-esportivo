@@ -880,21 +880,50 @@ export default function Ranking() {
                   try {
                     if (!compareDateB) throw new Error('Selecione a Data B.');
 
-                    // Normaliza A (tableItems) e B (API) para buildAbSummary enxergar nomes + iap
+                    // Normaliza A (tableItems) e B (API) para garantir rank_position + ordenação + iap
+                    const normalizeForAB = (arrRaw) => {
+                      const arr = Array.isArray(arrRaw) ? arrRaw : [];
+                    
+                      const normalized = arr.map((it, i) => {
+                        const out = withCompatFields(it, pickIapNumber(it));
+                    
+                        // garante rank_position numérico (fallback i+1)
+                        const rp = toNumber(out?.rank_position);
+                        out.rank_position = rp !== null ? rp : (i + 1);
+                    
+                        return out;
+                      });
+                    
+                      // ordena por rank_position asc (Top 1 primeiro)
+                      normalized.sort((a, b) => {
+                        const ra = toNumber(a?.rank_position) ?? 999999;
+                        const rb = toNumber(b?.rank_position) ?? 999999;
+                        return ra - rb;
+                      });
+                    
+                      return normalized;
+                    };
+                    
                     const aItemsRaw = Array.isArray(tableItems) ? tableItems : [];
-                    const aItems = aItemsRaw.map((it) => withCompatFields(it, pickIapNumber(it)));
-
+                    const aItems = normalizeForAB(aItemsRaw);
+                    
                     const resB = await fetch(`/api/daily_ranking?date=${encodeURIComponent(compareDateB)}`);
                     if (!resB.ok) throw new Error(`Falha ao buscar ranking da Data B (${resB.status})`);
-
+                    
                     const bJson = await resB.json();
                     const bRaw = Array.isArray(bJson) ? bJson : Array.isArray(bJson?.data) ? bJson.data : [];
-                    const bItems = bRaw.map((it) => withCompatFields(it, pickIapNumber(it)));
-
-                    setAbSummary(buildAbSummary(aItems.slice(0, 20), bItems.slice(0, 20)));
-
-                    const topA = aItems.map((it) => getClubName(it)).filter((n) => n && n !== '—').slice(0, 5);
-                    const topB = bItems.map((it) => getClubName(it)).filter((n) => n && n !== '—').slice(0, 5);
+                    const bItems = normalizeForAB(bRaw);
+                    
+                    // Top 5 real (por rank)
+                    const aTop5Items = aItems.slice(0, 5);
+                    const bTop5Items = bItems.slice(0, 5);
+                    
+                    // Resumo A → B baseado no Top 5
+                    setAbSummary(buildAbSummary(aTop5Items, bTop5Items));
+                    
+                    // labels para linhas (A) e (B)
+                    const topA = aTop5Items.map((it) => getClubName(it)).filter((n) => n && n !== '—');
+                    const topB = bTop5Items.map((it) => getClubName(it)).filter((n) => n && n !== '—');
 
                     const merged = [...topA.map((n) => `${n} (A)`), ...topB.map((n) => `${n} (B)`)];
 
