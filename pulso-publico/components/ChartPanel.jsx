@@ -1,7 +1,7 @@
 //components/ChartPanel.jsx
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Bar } from 'react-chartjs-2';
 import LoadingChartPlaceholder from './LoadingChartPlaceholder';
 import { MANUAL_PALETTE } from '../lib/rankingUtils';
@@ -13,18 +13,15 @@ function toNumber(x) {
   const n = typeof x === 'string' ? Number(String(x).replace(',', '.')) : Number(x);
   return Number.isFinite(n) ? n : null;
 }
-
 function normalizeClubKey(name) {
   const s = String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
-
 function fmt2(x) {
   const n = toNumber(x);
   if (n === null) return '—';
   return n.toFixed(2);
 }
-
 function formatDateBRdash(isoYmd) {
   if (!isoYmd) return '';
   const s = String(isoYmd).slice(0, 10);
@@ -32,10 +29,17 @@ function formatDateBRdash(isoYmd) {
   if (!m) return s;
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
-
-// helpers de cor (interpolação)
-function lerp(a, b, t) {
-  return a + (b - a) * t;
+// color helpers
+function lerp(a, b, t) { return a + (b - a) * t; }
+function hexToRgb(hex) {
+  const h = String(hex).replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const bigint = parseInt(full, 16);
+  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
+}
+function rgbToHex(r, g, b) {
+  const toHex = (v) => v.toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 function lerpColorHex(aHex, bHex, t) {
   const a = hexToRgb(aHex);
@@ -44,15 +48,6 @@ function lerpColorHex(aHex, bHex, t) {
   const g = Math.round(lerp(a.g, b.g, t));
   const bl = Math.round(lerp(a.b, b.b, t));
   return rgbToHex(r, g, bl);
-}
-function hexToRgb(hex) {
-  const h = String(hex).replace('#', '');
-  const bigint = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
-  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
-}
-function rgbToHex(r, g, b) {
-  const toHex = (v) => v.toString(16).padStart(2, '0');
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 export default function ChartPanel({
@@ -67,19 +62,30 @@ export default function ChartPanel({
 }) {
   const primary = MANUAL_PALETTE[0] ?? '#337d26';
 
+  // track viewport width to adapt layout (client-side)
+  const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
+  useEffect(() => {
+    function onResize() { setVw(window.innerWidth); }
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const isNarrow = vw < 520; // breakpoint mobile
+  const cardHeight = isNarrow ? `calc(100vh - 100px)` : `calc(100vh - 140px)`;
+  const datasetBarThickness = isNarrow ? 12 : 18;
+  const datasetMaxBarThickness = isNarrow ? 14 : 22;
+  const layoutPadding = { left: isNarrow ? 8 : 12, right: isNarrow ? 24 : 48 };
+
   const clean = useMemo(() => {
     const arr = Array.isArray(rows) ? rows : [];
-
     return arr
       .map((r, idx) => {
         const club = r?.club;
         const rawItem = r?.rawItem ?? r;
-
         const value = toNumber(r?.value ?? r?.score ?? r?.iap ?? r?.iap_score ?? null);
         if (!club || club === '—' || value === null) return null;
-
         const rankPos = Number(rawItem?.rank_position) || idx + 1;
-
         const key =
           (rawItem?.club_id ? String(rawItem.club_id) : null) ||
           (r?.__club_key ? String(r.__club_key) : null) ||
@@ -116,7 +122,6 @@ export default function ChartPanel({
         }
 
         const rankDelta = prevRank !== null ? (prevRank - rankPos) : null;
-
         return { club, value, rankPos, key, prevRank, prevScore, rankDelta, rawItem };
       })
       .filter(Boolean)
@@ -131,7 +136,6 @@ export default function ChartPanel({
       </section>
     );
   }
-
   if (clean.length === 0) {
     return (
       <section className={ctrlStyles.topicCard} style={{ minHeight: height }}>
@@ -142,33 +146,22 @@ export default function ChartPanel({
     );
   }
 
-  // Cores base para interpolação
-  const greenLight = '#d7f4e0'; // subidas pequenas
-  const greenDark = '#1b7f3a';  // subidas grandes
-  const redLight = '#f7d6d6';   // quedas pequenas
-  const redDark = '#c62828';    // quedas grandes
-  const neutral = '#6c9bd1';    // sem comparação / neutro
+  // color ramp settings
+  const greenLight = '#d7f4e0';
+  const greenDark = '#1b7f3a';
+  const redLight = '#f7d6d6';
+  const redDark = '#c62828';
+  const neutral = '#6c9bd1';
 
-  // calcula magnitude máxima de rankDelta para normalizar (evita saturar pequenas variações)
   const absDeltas = clean.map((r) => (r.rankDelta !== null && r.rankDelta !== undefined ? Math.abs(Number(r.rankDelta)) : 0));
-  const maxAbsDelta = Math.max(...absDeltas, 1); // evita divisão por zero
+  const maxAbsDelta = Math.max(...absDeltas, 1);
 
-  // Opção 2 (gradiente por magnitude do movimento)
   const bgColors = clean.map((r) => {
-    if (!prevDateUsed) return primary; // sem comparação -> cor padrão
+    if (!prevDateUsed) return primary;
     if (r.rankDelta === null || r.rankDelta === undefined) return neutral;
-
-    // normaliza t em [0,1] pela magnitude relativa ao maxAbsDelta
     const t = Math.min(Math.abs(Number(r.rankDelta)) / maxAbsDelta, 1);
-
-    if (r.rankDelta > 0) {
-      // subiu: de greenLight (t=0) -> greenDark (t=1)
-      return lerpColorHex(greenLight, greenDark, t);
-    }
-    if (r.rankDelta < 0) {
-      // caiu: de redLight (t=0) -> redDark (t=1)
-      return lerpColorHex(redLight, redDark, t);
-    }
+    if (r.rankDelta > 0) return lerpColorHex(greenLight, greenDark, t);
+    if (r.rankDelta < 0) return lerpColorHex(redLight, redDark, t);
     return neutral;
   });
 
@@ -181,12 +174,13 @@ export default function ChartPanel({
         backgroundColor: bgColors,
         borderWidth: 0,
         borderRadius: 10,
-        barThickness: 18,
-        maxBarThickness: 22,
+        barThickness: datasetBarThickness,
+        maxBarThickness: datasetMaxBarThickness,
       },
     ],
   };
 
+  // plugin draws text; adapts to chart.width for mobile
   const labelsPlugin = {
     id: 'labelsPlugin',
     afterDatasetsDraw(chart) {
@@ -195,11 +189,14 @@ export default function ChartPanel({
       const dataset = chart.data.datasets[0];
       if (!meta?.data?.length) return;
 
+      const small = (chart.width && chart.width < 520) || isNarrow;
+      const insideFont = small ? '600 11px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial' : '600 13px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
+      const valueFont = small ? '400 11px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial' : '400 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
+      const padIn = small ? 8 : 12;
+      const padOut = small ? 8 : 12;
+
       ctx.save();
       ctx.textBaseline = 'middle';
-
-      const insideFont = '600 13px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
-      const valueFont = '400 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
 
       for (let i = 0; i < meta.data.length; i += 1) {
         const bar = meta.data[i];
@@ -207,24 +204,18 @@ export default function ChartPanel({
         const row = clean[dataIndex];
         if (!row) continue;
 
-        const props =
-          typeof bar.getProps === 'function'
-            ? bar.getProps(['x', 'y', 'base', 'width', 'height'], true)
-            : bar;
-
+        const props = typeof bar.getProps === 'function' ? bar.getProps(['x', 'y', 'base', 'width', 'height'], true) : bar;
         const xEnd = props.x;
         const xStart = props.base;
         const yMid = props.y;
 
-        const padIn = 12;
         const innerLeft = Math.max(xStart + padIn, chartArea.left + 6);
         const innerRight = Math.min(xEnd - padIn, chartArea.right - 6);
         const innerWidth = innerRight - innerLeft;
 
-        // decidir cor do texto interno dependendo da cor da barra (se for muito claro, usar texto escuro)
+        // choose text color depending on bar color luminance
         const barColor = bgColors[dataIndex] || primary;
         const barRgb = hexToRgb(barColor);
-        // luminance aproximada para contraste: 0..255, se > 180 usa texto escuro
         const luminance = 0.2126 * barRgb.r + 0.7152 * barRgb.g + 0.0722 * barRgb.b;
         const insideTextColor = luminance > 180 ? 'rgba(0,0,0,0.85)' : '#ffffff';
 
@@ -234,23 +225,31 @@ export default function ChartPanel({
 
         const insideText = `${row.rankPos}° ${row.club}`;
 
-        if (innerWidth > 70) {
+        // if bar interior is wide enough, draw inside; else draw truncated (short) or attempt to draw slightly outside to avoid hiding last label
+        if (innerWidth > 60) {
           const fullW = ctx.measureText(insideText).width;
           if (fullW <= innerWidth) {
             ctx.fillText(insideText, innerLeft, yMid);
-          } else if (innerWidth > 90) {
-            const short = `${row.rankPos}° ${String(row.club).slice(0, 14)}…`;
-            if (ctx.measureText(short).width <= innerWidth) ctx.fillText(short, innerLeft, yMid);
+          } else {
+            // try a shorter label
+            const short = `${row.rankPos}° ${String(row.club).slice(0, Math.max(6, small ? 8 : 12))}…`;
+            ctx.fillText(short, innerLeft, yMid);
           }
+        } else {
+          // interior too small: draw club name to the left of the bar (if there's space), otherwise draw short label inside
+          const leftX = Math.max(chartArea.left + 6, xStart - 8 - 120); // attempt left of bar with cap
+          ctx.textAlign = 'right';
+          ctx.fillStyle = 'rgba(0,0,0,0.8)';
+          const shortLeft = `${row.rankPos}° ${String(row.club).slice(0, Math.max(4, small ? 6 : 8))}…`;
+          ctx.font = valueFont;
+          ctx.fillText(shortLeft, leftX, yMid);
         }
 
-        const padOut = 12;
+        // draw value at right
         const outX = Math.min(xEnd + padOut, chartArea.right - 8);
-
         ctx.font = valueFont;
         ctx.fillStyle = 'rgba(0,0,0,0.88)';
         ctx.textAlign = 'left';
-
         const valueStr = fmt2(dataset.data[dataIndex]);
         ctx.fillText(valueStr, outX, yMid);
       }
@@ -259,7 +258,7 @@ export default function ChartPanel({
     },
   };
 
-  // tooltip externo ANEXADO AO BODY (position: fixed) — posição calculada corretamente em viewport coords
+  // external tooltip (unchanged behavior) appended to body (position: fixed)
   const externalTooltip = (context) => {
     const tooltip = context.tooltip;
     const chart = context.chart;
@@ -350,7 +349,7 @@ export default function ChartPanel({
 
     tooltipEl.innerHTML = `${titleHtml}${datesHtml}`;
 
-    // posicionamento: usar coords da barra (meta.data[dataIndex]) convertidas para viewport (getBoundingClientRect)
+    // position using bar element coords (viewport)
     const meta = chart.getDatasetMeta(0);
     const bar = meta && meta.data && meta.data[dataIndex];
     let sourceViewportX = null;
@@ -379,7 +378,6 @@ export default function ChartPanel({
       sourceViewportY = canvasRect.top + caretY;
     }
 
-    // calcular dimensões do tooltip
     tooltipEl.style.left = '0px';
     tooltipEl.style.top = '0px';
     tooltipEl.style.opacity = '0';
@@ -426,7 +424,7 @@ export default function ChartPanel({
     indexAxis: 'y',
     responsive: true,
     maintainAspectRatio: false,
-    layout: { padding: { left: 12, right: 48 } },
+    layout: { padding: layoutPadding },
     plugins: {
       legend: { display: false },
       tooltip: {
@@ -436,11 +434,9 @@ export default function ChartPanel({
     },
     scales: {
       y: { ticks: { display: false }, grid: { display: false } },
-      x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { font: { size: 13 } } },
+      x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { font: { size: isNarrow ? 12 : 13 } } },
     },
   };
-
-  const cardHeight = `calc(100vh - 140px)`;
 
   return (
     <section className={ctrlStyles.topicCard} style={{ height: cardHeight, display: 'flex', flexDirection: 'column', gap: 12 }}>
