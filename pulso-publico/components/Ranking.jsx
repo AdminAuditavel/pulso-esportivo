@@ -979,14 +979,18 @@ export default function Ranking() {
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>Maior alta (Δ IAP)</div>
                     <div style={{ fontSize: 13 }}>
-                      {abSummary.bestUp ? `${abSummary.bestUp.name}: +${abSummary.bestUp.delta.toFixed(2)}` : '—'}
+                      {abSummary.bestUp
+                        ? `${abSummary.bestUp.name}: +${Math.abs(Number(abSummary.bestUp.delta) || 0).toFixed(2)}`
+                        : '—'}
                     </div>
                   </div>
 
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>Maior queda (Δ IAP)</div>
                     <div style={{ fontSize: 13 }}>
-                      {abSummary.bestDown ? `${abSummary.bestDown.name}: ${abSummary.bestDown.delta.toFixed(2)}` : '—'}
+                      {abSummary.bestDown
+                        ? `${abSummary.bestDown.name}: -${Math.abs(Number(abSummary.bestDown.delta) || 0).toFixed(2)}`
+                        : '—'}
                     </div>
                   </div>
                 </div>
